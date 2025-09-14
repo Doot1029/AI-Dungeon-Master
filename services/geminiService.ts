@@ -242,15 +242,18 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
 export const generatePersonality = async (name: string, className: ClassName, isPgMode: boolean): Promise<string> => {
     if (!ai) throw new Error("AI service not initialized.");
     try {
-        let content = `Generate a short, 1-2 sentence personality bio for a D&D character named ${name} who is a ${className}. Make it intriguing and give them a unique quirk. Do not surround the response with quotes or any other formatting, just return the plain text of the bio.`;
-         if (isPgMode) {
-            content += ` The bio must be strictly PG-rated and family-friendly.`
+        const userPrompt = `Generate a short, 1-2 sentence personality bio for a D&D character named ${name} who is a ${className}. Make it intriguing and give them a unique quirk. Do not surround the response with quotes or any other formatting, just return the plain text of the bio.`;
+        
+        let systemInstruction = `You are a creative writer specializing in fantasy characters. Your responses should be concise, creative, and delivered as plain text.`;
+        if (isPgMode) {
+            systemInstruction += ` All content must be strictly PG-rated and family-friendly.`;
         }
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: content,
+            contents: userPrompt,
             config: {
+                systemInstruction: systemInstruction,
                 temperature: 0.8,
             },
         });
