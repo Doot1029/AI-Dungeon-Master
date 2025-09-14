@@ -6,7 +6,7 @@ import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection, Clas
 // PASTE YOUR GEMINI API KEY HERE.
 // This key will be visible in your code if you deploy this to a public repository.
 // It is strongly recommended to use this method for local development or private sites only.
-const API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+const API_KEY = "AIzaSyDA3t3eeSYvuzszy2-0l6wkNxGcCyyLjA8";
 
 let ai: GoogleGenAI | null = null;
 
