@@ -1,0 +1,5 @@
+{
+  "name": "AI Dungeon Master",
+  "description": "An AI-powered choose-your-own-adventure game where you create D&D-style characters, provide a story prompt, and make skill-based choices to shape your unique journey.",
+  "requestFramePermissions": []
+}
