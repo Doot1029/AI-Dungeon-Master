@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection } from "../types";
+import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection, ClassName } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
@@ -55,6 +55,16 @@ const locationResponseSchema = {
   required: ["name", "description", "objects", "npcs", "exits"],
 };
 
+const itemSchema = {
+    type: Type.OBJECT,
+    properties: {
+        name: { type: Type.STRING },
+        description: { type: Type.STRING },
+        quantity: { type: Type.INTEGER }
+    },
+    required: ["name", "description", "quantity"]
+};
+
 const actionOutcomeResponseSchema = {
     type: Type.OBJECT,
     properties: {
@@ -64,7 +74,7 @@ const actionOutcomeResponseSchema = {
         },
         choices: {
             type: Type.ARRAY,
-            description: "An array of 2 to 4 distinct choices for the player to make next. These should be a mix of 'do' and 'say' actions.",
+            description: "An array of 2 to 4 distinct choices for the NEXT player character to make. These should be a mix of 'do' and 'say' actions.",
             items: {
                 type: Type.OBJECT,
                 properties: {
@@ -82,7 +92,9 @@ const actionOutcomeResponseSchema = {
             properties: {
                 hpChange: { type: Type.INTEGER, description: "Change in HP (e.g., -5 for damage, 10 for healing)." },
                 mpChange: { type: Type.INTEGER, description: "Change in MP (e.g., -3 for casting a spell)." },
-                coinsChange: { type: Type.INTEGER, description: "Change in coins (e.g., 50 for a reward, -10 for a purchase)." }
+                coinsChange: { type: Type.INTEGER, description: "Change in coins (e.g., 50 for a reward, -10 for a purchase)." },
+                inventoryAdd: { type: Type.ARRAY, items: itemSchema, description: "List of items to add to the character's inventory." },
+                inventoryRemove: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of item names to remove from inventory." }
             }
         },
         locationUpdates: {
@@ -93,6 +105,19 @@ const actionOutcomeResponseSchema = {
                 objectsToRemove: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of object names to remove." },
                 npcsToAdd: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING } } } },
                 npcsToRemove: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of NPC names to remove." },
+            }
+        },
+        questUpdates: {
+            type: Type.ARRAY,
+            description: "Updates to the player's quests. Use this to add new quests or update the status of existing ones.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "The unique title of the quest." },
+                    description: { type: Type.STRING, description: "A description for a new quest. Omit when only changing status." },
+                    status: { type: Type.STRING, enum: ['active', 'completed', 'failed'], description: "The new status of the quest." }
+                },
+                required: ["title", "status"]
             }
         }
     },
@@ -135,7 +160,7 @@ export const generateLocation = async (prompt: string, isPgMode: boolean): Promi
 };
 
 export const generateActionOutcome = async (prompt: string, isPgMode: boolean): Promise<ActionOutcome> => {
-    const systemInstruction = `${getBaseSystemInstruction(isPgMode)} Your role is to determine the outcome of a player's action. You will be given the full context: the world, the party, the current location, and the player's action. Based on the active character's stats and skills, decide if their action succeeds or fails and by how much. Narrate this outcome compellingly. Then, provide relevant state changes (HP, items, etc.) and new choices for the player. The choices provided must be for the active player character only. Have any NPCs in the scene react or act realistically based on their personality and the situation.`;
+    const systemInstruction = `${getBaseSystemInstruction(isPgMode)} Your role is to determine the outcome of a player's action. The game is turn-based. You will be given the full context: the world, the party, the current location, and the current character's action. Based on the active character's stats and skills, decide if their action succeeds or fails and by how much. Narrate this outcome compellingly. Then, provide relevant state changes (HP, items, etc.) and new choices for the NEXT player character to take on their turn. Have any NPCs in the scene react or act realistically based on their personality and the situation.`;
     return callApi<ActionOutcome>(prompt, systemInstruction, actionOutcomeResponseSchema);
 }
 
@@ -181,5 +206,27 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
     } catch (error) {
         console.error("Error generating simple prompt idea with Gemini:", error);
         throw new Error("Failed to communicate with the AI for a simple prompt idea.");
+    }
+};
+
+export const generatePersonality = async (name: string, className: ClassName, isPgMode: boolean): Promise<string> => {
+    try {
+        let content = `Generate a short, 1-2 sentence personality bio for a D&D character named ${name} who is a ${className}. Make it intriguing and give them a unique quirk. Do not surround the response with quotes or any other formatting, just return the plain text of the bio.`;
+         if (isPgMode) {
+            content += ` The bio must be strictly PG-rated and family-friendly.`
+        }
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: content,
+            config: {
+                temperature: 0.8,
+            },
+        });
+
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error generating personality with Gemini:", error);
+        throw new Error("Failed to communicate with the AI for a personality bio.");
     }
 };

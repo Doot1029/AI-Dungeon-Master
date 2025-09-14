@@ -4,6 +4,7 @@ import { LocationData, CardinalDirection } from '../types';
 interface LocationPanelProps {
     location: LocationData | null;
     onTravel: (direction: CardinalDirection) => void;
+    onInteract: (actionText: string) => void;
     isLoading: boolean;
 }
 
@@ -18,7 +19,6 @@ const CheckIcon = () => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
     </svg>
 );
-
 
 const TravelButton: React.FC<{ direction: CardinalDirection, onTravel: (dir: CardinalDirection) => void, disabled: boolean, available: boolean }> = 
 ({ direction, onTravel, disabled, available }) => {
@@ -42,7 +42,94 @@ const TravelButton: React.FC<{ direction: CardinalDirection, onTravel: (dir: Car
     );
 };
 
-export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel, isLoading }) => {
+interface InteractableProps {
+    name: string;
+    description: string;
+    type: 'object' | 'npc';
+    onInteract: (action: string) => void;
+    isLoading: boolean;
+}
+
+const Interactable: React.FC<InteractableProps> = ({ name, description, type, onInteract, isLoading }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [inputValue, setInputValue] = useState('');
+    const [activeAction, setActiveAction] = useState<string | null>(null);
+
+    const objectActions = ['Examine', 'Take', 'Use on...', 'Push'];
+    const npcActions = ['Talk to', 'Ask about...', 'Give...', 'Attack'];
+    const actions = type === 'object' ? objectActions : npcActions;
+
+    const handleActionClick = (action: string) => {
+        if (action.endsWith('...')) {
+            setActiveAction(action);
+            setIsOpen(true);
+        } else {
+            onInteract(`${action} ${name}`);
+            setIsOpen(false);
+            setActiveAction(null);
+        }
+    };
+
+    const handleInputSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (inputValue.trim()) {
+            let fullActionText = '';
+            if (activeAction === 'Ask about...') {
+                 fullActionText = `Ask ${name} about ${inputValue}`;
+            } else if (activeAction === 'Use on...') {
+                fullActionText = `Use ${name} on ${inputValue}`;
+            } else if (activeAction === 'Give...') {
+                fullActionText = `Give ${inputValue} to ${name}`;
+            }
+            onInteract(fullActionText);
+            setInputValue('');
+            setActiveAction(null);
+            setIsOpen(false);
+        }
+    };
+
+    return (
+        <div className="py-2">
+            <button onClick={() => setIsOpen(!isOpen)} className="w-full text-left font-bold text-gray-200 hover:text-yellow-300 flex justify-between items-center focus:outline-none">
+                <span>{name}</span>
+                <span className={`transform transition-transform text-xs ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+            </button>
+            {isOpen && (
+                <div className="pl-4 pt-2 space-y-2">
+                    <p className="text-xs italic text-gray-400">{description}</p>
+                    <div className="flex flex-wrap gap-2">
+                        {actions.map(action => (
+                            <button 
+                                key={action}
+                                onClick={() => handleActionClick(action)}
+                                disabled={isLoading}
+                                className="text-xs bg-gray-600 hover:bg-yellow-600 hover:text-gray-900 px-2 py-1 rounded disabled:opacity-50"
+                            >
+                                {action}
+                            </button>
+                        ))}
+                    </div>
+                    {activeAction && (
+                        <form onSubmit={handleInputSubmit} className="flex gap-2 pt-1">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={e => setInputValue(e.target.value)}
+                                placeholder={activeAction.replace('...', '') + '...'}
+                                className="flex-grow bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-yellow-500 focus:outline-none"
+                                autoFocus
+                            />
+                            <button type="submit" disabled={isLoading} className="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded disabled:opacity-50">Go</button>
+                        </form>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel, onInteract, isLoading }) => {
     const [isCopied, setIsCopied] = useState(false);
 
     if (!location) {
@@ -53,42 +140,55 @@ export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel
         );
     }
     
-    const handleCopy = () => {
-        navigator.clipboard.writeText(location.description).then(() => {
+    const handleCopyForTexting = () => {
+        const parts = [];
+        parts.push(`*Location: ${location.name}*`);
+        parts.push(location.description);
+
+        if (location.objects.length > 0) {
+            parts.push('\n*Objects:*');
+            location.objects.forEach(obj => parts.push(`- ${obj.name}: ${obj.description}`));
+        }
+        if (location.npcs.length > 0) {
+            parts.push('\n*People:*');
+            location.npcs.forEach(npc => parts.push(`- ${npc.name}: ${npc.description}`));
+        }
+        if (location.exits.length > 0) {
+            parts.push(`\n*Exits:* ${location.exits.map(e => e.charAt(0).toUpperCase() + e.slice(1)).join(', ')}`);
+        }
+        
+        const fullText = parts.join('\n');
+        navigator.clipboard.writeText(fullText).then(() => {
             setIsCopied(true);
             setTimeout(() => setIsCopied(false), 2000);
         });
     };
 
     return (
-        <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col gap-4">
+        <div className="flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
             <div>
                 <div className="flex justify-between items-baseline mb-2">
                     <h3 className="font-medieval text-2xl text-yellow-400">{location.name}</h3>
-                     <button onClick={handleCopy} className="text-xs text-gray-400 hover:text-yellow-300 flex items-center gap-1">
+                     <button onClick={handleCopyForTexting} className="text-xs text-gray-400 hover:text-yellow-300 flex items-center gap-1">
                         {isCopied ? <CheckIcon /> : <CopyIcon />}
-                        {isCopied ? 'Copied!' : 'Copy Desc.'}
+                        {isCopied ? 'Copied!' : 'Copy for Texting'}
                     </button>
                 </div>
-                <p className="text-sm bg-gray-900 bg-opacity-50 p-2 rounded max-h-24 overflow-y-auto">{location.description}</p>
+                <p className="text-sm bg-gray-900 bg-opacity-50 p-2 rounded">{location.description}</p>
             </div>
 
             {(location.objects.length > 0 || location.npcs.length > 0) &&
-                <div className="border-t border-gray-700 pt-3 space-y-3 text-sm">
+                <div className="border-t border-gray-700 pt-3 text-sm divide-y divide-gray-700">
                     {location.objects.length > 0 && (
                         <div>
-                            <h4 className="font-bold text-yellow-300 mb-1">Objects:</h4>
-                            <ul className="list-disc list-inside text-gray-300">
-                                {location.objects.map(obj => <li key={obj.name}>{obj.name}</li>)}
-                            </ul>
+                            <h4 className="font-bold text-yellow-300 pt-2 pb-1">Objects:</h4>
+                            {location.objects.map(obj => <Interactable key={obj.name} {...obj} type="object" onInteract={onInteract} isLoading={isLoading} />)}
                         </div>
                     )}
                     {location.npcs.length > 0 && (
                         <div>
-                            <h4 className="font-bold text-yellow-300 mb-1">People:</h4>
-                            <ul className="list-disc list-inside text-gray-300">
-                                {location.npcs.map(npc => <li key={npc.name}>{npc.name}</li>)}
-                            </ul>
+                            <h4 className="font-bold text-yellow-300 pt-2 pb-1">People:</h4>
+                            {location.npcs.map(npc => <Interactable key={npc.name} {...npc} type="npc" onInteract={onInteract} isLoading={isLoading} />)}
                         </div>
                     )}
                 </div>

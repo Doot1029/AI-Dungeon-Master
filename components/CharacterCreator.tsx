@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Character, ClassName, Ability, Skill } from '../types';
 import { CLASS_PROFICIENCIES, CLASS_BASE_STATS } from '../constants';
+import { generatePersonality } from '../services/geminiService';
 
 interface CharacterCreatorProps {
     onSave: (character: Character, index?: number) => void;
     onCancelEdit: () => void;
     characterToEdit: { character: Character; index: number; } | null;
+    isPgMode: boolean;
 }
 
 // Helper to roll 4d6 and drop the lowest
@@ -25,12 +27,13 @@ const generateInitialScores = (): Record<Ability, number> => ({
     [Ability.CHA]: rollStat(),
 });
 
-export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCancelEdit, characterToEdit }) => {
+export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCancelEdit, characterToEdit, isPgMode }) => {
     const [name, setName] = useState('');
     const [className, setClassName] = useState<ClassName>(ClassName.FIGHTER);
     const [scores, setScores] = useState<Record<Ability, number>>(generateInitialScores());
     const [personality, setPersonality] = useState('');
     const [isNpc, setIsNpc] = useState(false);
+    const [isGeneratingBio, setIsGeneratingBio] = useState(false);
     
     useEffect(() => {
         if (characterToEdit) {
@@ -51,6 +54,23 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
 
     const handleRollStats = () => {
         setScores(generateInitialScores());
+    };
+
+    const handleGenerateBio = async () => {
+        if (!name.trim()) {
+            alert("Please enter a name before generating a bio.");
+            return;
+        }
+        setIsGeneratingBio(true);
+        try {
+            const newBio = await generatePersonality(name, className, isPgMode);
+            setPersonality(newBio);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to generate a personality bio. Please try again.");
+        } finally {
+            setIsGeneratingBio(false);
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -83,6 +103,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
             mp: characterToEdit?.character.mp ?? maxMp,
             maxMp: maxMp,
             coins: characterToEdit?.character.coins ?? coins,
+            inventory: characterToEdit?.character.inventory ?? [],
         };
         
         onSave(characterData, characterToEdit?.index);
@@ -125,7 +146,12 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
                     </select>
                 </div>
                  <div>
-                    <label htmlFor="personality" className="block text-sm font-bold mb-1 text-gray-300">Personality Bio</label>
+                    <div className="flex justify-between items-center mb-1">
+                        <label htmlFor="personality" className="block text-sm font-bold text-gray-300">Personality Bio</label>
+                        <button type="button" onClick={handleGenerateBio} disabled={isGeneratingBio} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-1 px-2 rounded disabled:bg-gray-600">
+                           {isGeneratingBio ? '...' : 'Generate'}
+                        </button>
+                    </div>
                     <textarea
                         id="personality"
                         value={personality}

@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import { Character, Ability, Skill } from '../types';
 import { SKILL_ABILITY_MAP } from '../constants';
 
@@ -35,6 +34,8 @@ const VitalsBar: React.FC<{ current: number; max: number; label: string; color: 
 
 
 export const CharacterSheet: React.FC<CharacterSheetProps> = ({ character }) => {
+    const [inventoryOpen, setInventoryOpen] = useState(false);
+
     return (
         <div>
             <div className="text-center mb-4">
@@ -62,6 +63,29 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ character }) => 
             <p className="text-sm bg-gray-900 bg-opacity-50 p-2 rounded whitespace-pre-wrap h-24 overflow-y-auto">
                 {character.personality || 'Not defined.'}
             </p>
+
+            <div className="mt-4">
+                 <button onClick={() => setInventoryOpen(!inventoryOpen)} className="w-full flex justify-between items-center text-left font-medieval text-xl text-yellow-400 mb-2 focus:outline-none">
+                    <span>Inventory</span>
+                    <span className={`transform transition-transform ${inventoryOpen ? 'rotate-180' : ''}`}>▼</span>
+                 </button>
+                 {inventoryOpen && (
+                    <div className="bg-gray-900 bg-opacity-50 p-2 rounded max-h-32 overflow-y-auto">
+                        {character.inventory && character.inventory.length > 0 ? (
+                            <ul className="space-y-1 text-sm">
+                                {character.inventory.map(item => (
+                                    <li key={item.name} className="flex justify-between">
+                                        <span>{item.name}</span>
+                                        <span className="font-mono text-gray-400">x{item.quantity}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-sm italic text-gray-500">Empty</p>
+                        )}
+                    </div>
+                 )}
+            </div>
 
             <h3 className="font-medieval text-xl text-yellow-400 mt-4 mb-2">Skills</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

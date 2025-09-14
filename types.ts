@@ -35,6 +35,19 @@ export enum ClassName {
     BARD = 'Bard',
 }
 
+export interface Item {
+    name: string;
+    description: string;
+    quantity: number;
+}
+
+export interface Quest {
+    id: string;
+    title: string;
+    description: string;
+    status: 'active' | 'completed' | 'failed';
+}
+
 export interface Character {
     name: string;
     className: ClassName;
@@ -49,6 +62,7 @@ export interface Character {
     mp: number;
     maxMp: number;
     coins: number;
+    inventory: Item[];
 }
 
 export interface StoryPart {
@@ -103,6 +117,8 @@ export interface CharacterUpdate {
     hpChange?: number;
     mpChange?: number;
     coinsChange?: number;
+    inventoryAdd?: Item[];
+    inventoryRemove?: string[]; // Names of items to remove
 }
 
 export interface LocationUpdate {
@@ -112,9 +128,16 @@ export interface LocationUpdate {
     npcsToRemove?: string[];
 }
 
+export interface QuestUpdate {
+    title: string;
+    description?: string;
+    status: 'active' | 'completed' | 'failed';
+}
+
 export interface ActionOutcome {
     narrative: string;
     choices: Choice[];
     characterUpdates?: CharacterUpdate;
     locationUpdates?: LocationUpdate;
+    questUpdates?: QuestUpdate[];
 }

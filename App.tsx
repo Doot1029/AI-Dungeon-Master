@@ -1,14 +1,17 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Character, StoryPart, Choice, GameState, LocationData, WorldState, CardinalDirection, ActionType } from './types';
+import { Character, StoryPart, Choice, GameState, LocationData, WorldState, CardinalDirection, ActionType, Quest } from './types';
 import { generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
 import { CharacterCreator } from './components/CharacterCreator';
 import { CharacterSheet } from './components/CharacterSheet';
 import { StoryPanel } from './components/StoryPanel';
 import { ChoicesPanel } from './components/ChoicesPanel';
 import { LocationPanel } from './components/LocationPanel';
+import { QuestPanel } from './components/QuestPanel';
 import { SettingsMenu } from './components/SettingsMenu';
 import { initialCharacters } from './constants';
 import { useAudio } from './hooks/useAudio';
+
+type Tab = 'story' | 'location' | 'quests';
 
 const GearIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -32,10 +35,12 @@ const App: React.FC = () => {
     const [isPgMode, setIsPgMode] = useState<boolean>(true);
     const [showSettings, setShowSettings] = useState<boolean>(false);
     const [editingCharacterIndex, setEditingCharacterIndex] = useState<number | null>(null);
+    const [activeTab, setActiveTab] = useState<Tab>('story');
     
     // World State
     const [worldState, setWorldState] = useState<WorldState>({});
     const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
+    const [quests, setQuests] = useState<Quest[]>([]);
 
     const storyEndRef = useRef<HTMLDivElement>(null);
     const activeCharacter = characters[activeCharacterIndex];
@@ -49,6 +54,19 @@ const App: React.FC = () => {
         return () => { window.speechSynthesis.cancel(); }
     }, []);
     
+    // NPC Turn Handler
+    useEffect(() => {
+        const currentCharacter = characters[activeCharacterIndex];
+        if (gameState === GameState.IN_PROGRESS && currentCharacter?.isNpc && !isLoading) {
+            const actionText = `It is now ${currentCharacter.name}'s turn. Based on their personality (${currentCharacter.personality || 'not defined'}) and the current situation, they decide to act.`;
+            const timer = setTimeout(() => {
+                handleAction({ text: actionText, actionType: 'auto' });
+            }, 1500); // Small delay to make it feel like the NPC is "thinking"
+            return () => clearTimeout(timer);
+        }
+    }, [activeCharacterIndex, gameState, isLoading, characters]);
+
+
     const handleSpeakText = (text: string) => {
         if (typeof window.speechSynthesis === 'undefined') return;
         window.speechSynthesis.cancel();
@@ -111,6 +129,12 @@ const App: React.FC = () => {
             `- ${c.name} (${c.className}): ${c.isNpc ? '[NPC]' : '[PLAYER]'}\n  HP: ${c.hp}/${c.maxHp}, MP: ${c.mp}/${c.maxMp}, Coins: ${c.coins}\n  Personality: ${c.personality || 'Not defined.'}\n  Proficiencies: ${c.proficiencies.join(', ')}`
         ).join('\n');
     };
+    
+    const advanceTurn = useCallback(() => {
+        if (characters.length > 0) {
+           setActiveCharacterIndex(prevIndex => (prevIndex + 1) % characters.length);
+        }
+    }, [characters.length]);
 
     const handleStartAdventure = async () => {
         if (!prompt.trim()) {
@@ -122,6 +146,8 @@ const App: React.FC = () => {
         setGameState(GameState.IN_PROGRESS);
         setStoryHistory([]);
         setWorldState({});
+        setQuests([]);
+        setActiveCharacterIndex(0);
 
         try {
             const initialLocation = await generateLocation(`The adventure begins based on this prompt: ${prompt}`, isPgMode);
@@ -137,7 +163,7 @@ const App: React.FC = () => {
             setStoryHistory([firstNarrative]);
 
             // Get initial choices
-            await handleAction({text: "The adventurers look around, taking in the scene.", actionType: 'auto'}, [firstNarrative]);
+            await handleAction({text: "The adventurers look around, taking in the scene.", actionType: 'auto'}, [firstNarrative], true);
 
         } catch (e) {
             console.error(e);
@@ -148,20 +174,33 @@ const App: React.FC = () => {
         }
     };
     
-    const handleAction = async (action: { text: string; actionType: 'do' | 'say' | 'auto' } | Choice, storyCtx?: StoryPart[]) => {
+    const handleAction = async (action: { text: string; actionType: 'do' | 'say' | 'auto' }, storyCtx?: StoryPart[], preventTurnAdvance: boolean = false) => {
         setIsLoading(true);
         setError(null);
-        setCurrentChoices([]);
+        
+        // Don't show choices from a previous turn
+        if (!activeCharacter.isNpc) {
+           setCurrentChoices([]);
+        }
 
-        const actionText = `Attempted to: '${action.text}'`;
         const newHistory: StoryPart[] = [
             ...(storyCtx || storyHistory),
-            { id: crypto.randomUUID(), type: 'action', text: actionText, characterName: activeCharacter.name },
+            { id: crypto.randomUUID(), type: 'action', text: action.text, characterName: activeCharacter.name },
         ];
         setStoryHistory(newHistory);
 
         try {
             const context = newHistory.slice(-5).map(p => `${p.characterName}: ${p.text}`).join('\n\n');
+            const getInventoryList = (char: Character) => {
+                if (!char.inventory || char.inventory.length === 0) return 'Empty';
+                return char.inventory.map(i => `${i.name} (x${i.quantity})`).join(', ');
+            }
+            const getQuestList = () => {
+                const activeQuests = quests.filter(q => q.status === 'active');
+                if (activeQuests.length === 0) return 'None';
+                return activeQuests.map(q => `- ${q.title}: ${q.description}`).join('\n');
+            }
+
             const promptForAI = `
 WORLD STATE:
 Current Location: ${currentLocation?.name} (${currentLocation?.id})
@@ -169,18 +208,24 @@ Current Location: ${currentLocation?.name} (${currentLocation?.id})
 - Objects: ${currentLocation?.objects.map(o => o.name).join(', ') || 'None'}
 - NPCs: ${currentLocation?.npcs.map(n => n.name).join(', ') || 'None'}
 
-PARTY STATE:
+PARTY STATE (Turn Order):
 ${getPartyComposition(true)}
+
+ACTIVE CHARACTER INVENTORY (${activeCharacter.name}):
+${getInventoryList(activeCharacter)}
+
+ACTIVE QUESTS:
+${getQuestList()}
 
 RECENT EVENTS:
 ${context}
 
-ACTION:
+ACTION (Turn of ${activeCharacter.name}):
 The active character, ${activeCharacter.name}, performs an action.
 Action Type: ${'actionType' in action ? action.actionType : 'auto'}.
 Action Description: "${action.text}"
 
-Based on this, continue the story.`;
+Based on this, continue the story. Remember to provide choices for the next player character.`;
 
             const outcome = await generateActionOutcome(promptForAI, isPgMode);
             
@@ -197,10 +242,50 @@ Based on this, continue the story.`;
                         newChar.hp = Math.max(0, Math.min(newChar.maxHp, newChar.hp + (updates.hpChange || 0)));
                         newChar.mp = Math.max(0, Math.min(newChar.maxMp, newChar.mp + (updates.mpChange || 0)));
                         newChar.coins += updates.coinsChange || 0;
+                        
+                        let newInventory = [...newChar.inventory];
+                        if (updates.inventoryRemove) {
+                            updates.inventoryRemove.forEach(itemName => {
+                                newInventory = newInventory.filter(i => i.name.toLowerCase() !== itemName.toLowerCase());
+                            });
+                        }
+                        if (updates.inventoryAdd) {
+                            updates.inventoryAdd.forEach(newItem => {
+                                const existingItemIndex = newInventory.findIndex(i => i.name.toLowerCase() === newItem.name.toLowerCase());
+                                if (existingItemIndex > -1) {
+                                    newInventory[existingItemIndex].quantity += newItem.quantity;
+                                } else {
+                                    newInventory.push(newItem);
+                                }
+                            });
+                        }
+                        newChar.inventory = newInventory;
+
                         return newChar;
                     }
                     return char;
                 }));
+            }
+
+            // Update Quests
+            if (outcome.questUpdates) {
+                setQuests(prevQuests => {
+                    const newQuests = [...prevQuests];
+                    outcome.questUpdates!.forEach(qUpdate => {
+                        const existingQuestIndex = newQuests.findIndex(q => q.title.toLowerCase() === qUpdate.title.toLowerCase());
+                        if (existingQuestIndex > -1) {
+                            newQuests[existingQuestIndex].status = qUpdate.status;
+                        } else if (qUpdate.status === 'active' && qUpdate.description) {
+                            newQuests.push({
+                                id: crypto.randomUUID(),
+                                title: qUpdate.title,
+                                description: qUpdate.description,
+                                status: 'active',
+                            });
+                        }
+                    });
+                    return newQuests;
+                });
             }
             
             // Update World
@@ -223,6 +308,9 @@ Based on this, continue the story.`;
             setError("The AI is confused by that action. Try something else.");
         } finally {
             setIsLoading(false);
+            if (!preventTurnAdvance) {
+                advanceTurn();
+            }
         }
     };
 
@@ -246,16 +334,14 @@ Based on this, continue the story.`;
 
         try {
             if (worldState[newLocationId]) {
-                // Location exists
                 const newLocation = worldState[newLocationId];
                 setCurrentLocationId(newLocationId);
                 const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `You arrive at ${newLocation.name}.\n\n${newLocation.description}`, characterName: 'DM' };
                 const newHistory = [...storyHistory, travelMessage, narrative];
                 setStoryHistory(newHistory);
-                await handleAction({text: "Look around the new area.", actionType: 'auto'}, newHistory);
+                await handleAction({text: "Look around the new area.", actionType: 'auto'}, newHistory, true);
 
             } else {
-                // Generate new location
                 const prompt = `The party travels ${direction} from "${currentLocation?.name}". Describe the new, distinct location they discover. It should not be the same as the previous one. Previous location description: ${currentLocation?.description}`;
                 const newLocation = await generateLocation(prompt, isPgMode);
                 newLocation.id = newLocationId;
@@ -266,7 +352,7 @@ Based on this, continue the story.`;
                 const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `You discover ${newLocation.name}.\n\n${newLocation.description}`, characterName: 'DM' };
                  const newHistory = [...storyHistory, travelMessage, narrative];
                 setStoryHistory(newHistory);
-                await handleAction({text: "Look around the newly discovered area.", actionType: 'auto'}, newHistory);
+                await handleAction({text: "Look around the newly discovered area.", actionType: 'auto'}, newHistory, true);
             }
         } catch(e) {
              console.error(e);
@@ -274,6 +360,7 @@ Based on this, continue the story.`;
              setStoryHistory(prev => prev.slice(0, -1)); // remove travel message
         } finally {
             setIsLoading(false);
+            advanceTurn(); // Traveling costs a turn
         }
     }
     
@@ -296,11 +383,25 @@ Based on this, continue the story.`;
         setError(null);
         setWorldState({});
         setCurrentLocationId(null);
+        setQuests([]);
         window.speechSynthesis.cancel();
     }
 
     const latestNarration = storyHistory.slice().reverse().find(part => part.type === 'narrative');
     const characterToEditData = editingCharacterIndex !== null ? { character: characters[editingCharacterIndex], index: editingCharacterIndex } : null;
+
+    const TabButton: React.FC<{tabName: Tab, label: string}> = ({tabName, label}) => (
+        <button
+            onClick={() => setActiveTab(tabName)}
+            className={`px-4 py-2 text-sm font-bold rounded-t-lg transition-colors ${
+                activeTab === tabName 
+                ? 'bg-gray-800 text-yellow-300 border-b-2 border-yellow-400' 
+                : 'bg-gray-900 text-gray-400 hover:bg-gray-700'
+            }`}
+        >
+            {label}
+        </button>
+    );
 
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
@@ -313,91 +414,105 @@ Based on this, continue the story.`;
                     <h1 className="font-medieval text-5xl sm:text-6xl md:text-7xl text-yellow-300 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">AI Dungeon Master</h1>
                 </header>
 
-                <main className="w-full max-w-7xl flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <main className="w-full max-w-7xl flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left Panel: Party & Character */}
                     <aside className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg">
+                           <h3 className="font-medieval text-2xl text-yellow-400 text-center mb-4">The Party</h3>
                            <div className="space-y-2 mb-4">
                                 {characters.map((char, index) => (
-                                    <div key={index} className="flex items-center justify-between gap-2">
-                                        <button onClick={() => setActiveCharacterIndex(index)} className={`flex-grow text-left px-3 py-2 text-sm rounded-md transition-all ${activeCharacterIndex === index ? 'bg-yellow-500 text-gray-900 font-bold' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                                            {char.name} <span className="text-xs opacity-80">({char.className})</span> {char.isNpc && <span className="text-xs text-cyan-300 italic">[NPC]</span>}
-                                        </button>
-                                         {gameState === GameState.CHARACTER_SELECTION && (
+                                    <div key={index} className={`flex items-center justify-between gap-2 p-2 rounded-md transition-all duration-300 ${activeCharacterIndex === index ? 'bg-yellow-500/20 ring-2 ring-yellow-400' : 'bg-gray-900/50'}`}>
+                                        <div className="flex-grow text-left text-sm">
+                                            <p className={`font-bold ${activeCharacterIndex === index ? 'text-yellow-300' : ''}`}>{char.name}</p>
+                                            <p className="text-xs opacity-80">{char.className} {char.isNpc && <span className="text-cyan-300 italic">[NPC]</span>}</p>
+                                        </div>
+                                         {gameState === GameState.CHARACTER_SELECTION ? (
                                             <div className="flex items-center">
                                                 <button onClick={() => setEditingCharacterIndex(index)} className="p-1 text-gray-400 hover:text-yellow-300" aria-label={`Edit ${char.name}`}><EditIcon /></button>
                                                 <button onClick={() => handleDeleteCharacter(index)} className="p-1 text-gray-400 hover:text-red-400" aria-label={`Delete ${char.name}`}><TrashIcon /></button>
                                             </div>
+                                        ) : (
+                                            activeCharacterIndex === index && <div className="text-xs font-bold text-yellow-400 animate-pulse pr-2">TURN</div>
                                         )}
                                     </div>
                                 ))}
                             </div>
                            {activeCharacter && <CharacterSheet character={activeCharacter} />}
                         </div>
-                        {gameState === GameState.CHARACTER_SELECTION && <CharacterCreator onSave={handleSaveCharacter} characterToEdit={characterToEditData} onCancelEdit={() => setEditingCharacterIndex(null)} />}
+                        {gameState === GameState.CHARACTER_SELECTION && <CharacterCreator onSave={handleSaveCharacter} characterToEdit={characterToEditData} onCancelEdit={() => setEditingCharacterIndex(null)} isPgMode={isPgMode}/>}
                     </aside>
 
-                    {/* Middle Panel: Story & Prompt */}
-                    <div className="lg:col-span-2 bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col">
-                        {gameState !== GameState.IN_PROGRESS && (
-                            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                    {/* Right Panels: Story, Location, etc. */}
+                    <div className="lg:col-span-2 flex flex-col">
+                         {gameState !== GameState.IN_PROGRESS ? (
+                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col flex-grow">
                                 {gameState === GameState.CHARACTER_SELECTION && ( <>
-                                    <h2 className="font-medieval text-4xl text-yellow-400 mb-4">Welcome, Adventurer!</h2>
+                                    <h2 className="font-medieval text-4xl text-yellow-400 mb-4 text-center">Welcome, Adventurer!</h2>
                                     {characters.length > 0 ? ( <>
-                                        <p className="mb-6 max-w-md">Your party assembles. When you are ready, the tale can begin.</p>
-                                        <button onClick={() => setGameState(GameState.AWAITING_PROMPT)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105">Begin Your Saga</button>
-                                    </> ) : ( <p className="mb-6 max-w-md">Your party is empty. Use the 'Create a Hero' panel to begin.</p> )}
+                                        <p className="mb-6 max-w-md mx-auto text-center">Your party assembles. When you are ready, the tale can begin.</p>
+                                        <button onClick={() => setGameState(GameState.AWAITING_PROMPT)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 self-center">Begin Your Saga</button>
+                                    </> ) : ( <p className="mb-6 max-w-md mx-auto text-center">Your party is empty. Use the 'Create a Hero' panel to begin.</p> )}
                                 </>)}
                                 
-                                {gameState === GameState.AWAITING_PROMPT && ( <>
+                                {gameState === GameState.AWAITING_PROMPT && ( <div className="flex flex-col items-center justify-center h-full text-center p-4">
                                     <h2 className="font-medieval text-3xl text-yellow-400 mb-4 text-center">Set the Scene</h2>
-                                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="e.g., 'A group of adventurers seeks a lost artifact in a jungle temple...'" className="w-full h-40 p-3 bg-gray-900 border border-gray-600 rounded-lg mb-4 focus:ring-2 focus:ring-yellow-500 focus:outline-none" />
+                                    <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="e.g., 'A group of adventurers seeks a lost artifact in a jungle temple...'" className="w-full max-w-lg h-40 p-3 bg-gray-900 border border-gray-600 rounded-lg mb-4 focus:ring-2 focus:ring-yellow-500 focus:outline-none" />
                                     <div className="flex justify-center items-center gap-4 flex-wrap">
                                         <button onClick={() => handleGeneratePrompt(false)} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? '...' : 'Generate Idea'}</button>
                                         <button onClick={() => handleGeneratePrompt(true)} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? '...' : 'Simple Idea'}</button>
-                                        <button onClick={handleStartAdventure} disabled={isLoading} className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? 'Conjuring...' : 'Start Adventure'}</button>
+                                        <button onClick={handleStartAdventure} disabled={isLoading || characters.length === 0} className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-6 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed">{isLoading ? 'Conjuring...' : 'Start Adventure'}</button>
                                     </div>
                                 </>)}
                                 {error && <div className="text-center p-4 text-red-400 mt-4">{error}</div>}
                             </div>
-                        )}
-                        {gameState === GameState.IN_PROGRESS && (
-                            <div className="flex flex-col h-[80vh] max-h-[80vh]">
-                                <StoryPanel storyHistory={storyHistory} storyEndRef={storyEndRef} onSpeak={handleSpeakText} onCopy={handleCopyText}/>
-                                {isLoading && !currentLocation && <div className="text-center p-4 italic text-yellow-300">The world is being born...</div>}
-                                {error && <div className="text-center p-4 text-red-400">{error}</div>}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Right Panel: Location & Choices */}
-                     <aside className="lg:col-span-1 flex flex-col gap-6">
-                        {gameState === GameState.IN_PROGRESS && (
+                        ) : (
                             <>
-                                <LocationPanel location={currentLocation} onTravel={handleTravel} isLoading={isLoading} />
-                                <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg">
-                                    {isLoading && currentChoices.length === 0 && <div className="text-center p-4 italic text-yellow-300">The DM is pondering...</div>}
-                                    
-                                    {!isLoading && currentChoices.length === 0 && storyHistory.length > 0 && (
-                                        <div className="text-center p-4">
-                                            <p className="font-medieval text-2xl text-yellow-400 mb-4">The Tale Concludes...</p>
-                                            <button onClick={restartGame} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg">Start a New Adventure</button>
-                                        </div>
-                                    )}
+                            <div className="flex border-b border-gray-600">
+                                <TabButton tabName="story" label="Story & Actions" />
+                                <TabButton tabName="location" label="Location" />
+                                <TabButton tabName="quests" label="Quests" />
+                            </div>
+                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-b-lg border border-t-0 border-gray-600 shadow-lg flex-grow flex flex-col">
+                                {error && <div className="text-center p-4 text-red-400 -mb-4 -mt-4 rounded-t-lg bg-red-900/50">{error}</div>}
+                                
+                                {activeTab === 'story' && (
+                                    <div className="flex flex-col h-[80vh] max-h-[80vh] flex-grow">
+                                        <StoryPanel storyHistory={storyHistory} storyEndRef={storyEndRef} onSpeak={handleSpeakText} onCopy={handleCopyText}/>
+                                        <div className="border-t border-gray-700 pt-4 mt-auto">
+                                            {isLoading && <div className="text-center p-4 italic text-yellow-300">The DM is pondering...</div>}
+                                            
+                                            {!isLoading && !activeCharacter.isNpc && currentChoices.length > 0 && (
+                                                 <ChoicesPanel choices={currentChoices} onAction={handleAction} character={activeCharacter} isLoading={isLoading} latestNarration={latestNarration} />
+                                            )}
 
-                                    {currentChoices.length > 0 && activeCharacter && (
-                                        <ChoicesPanel 
-                                            choices={currentChoices}
-                                            onAction={handleAction}
-                                            character={activeCharacter}
-                                            isLoading={isLoading}
-                                            latestNarration={latestNarration}
-                                        />
-                                    )}
-                                </div>
+                                            {!isLoading && activeCharacter.isNpc && (
+                                                <div className="text-center p-4 italic text-cyan-300">{activeCharacter.name} is thinking...</div>
+                                            )}
+
+                                            {!isLoading && currentChoices.length === 0 && storyHistory.length > 0 && (
+                                                <div className="text-center p-4">
+                                                    <p className="font-medieval text-2xl text-yellow-400 mb-4">The Tale Concludes...</p>
+                                                    <button onClick={restartGame} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg">Start a New Adventure</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                                {activeTab === 'location' && (
+                                    <LocationPanel 
+                                        location={currentLocation} 
+                                        onTravel={handleTravel} 
+                                        isLoading={isLoading || activeCharacter.isNpc} 
+                                        onInteract={(text) => handleAction({ text, actionType: 'do' })}
+                                    />
+                                )}
+                                {activeTab === 'quests' && (
+                                    <QuestPanel quests={quests} />
+                                )}
+                            </div>
                             </>
                         )}
-                     </aside>
+                     </div>
                 </main>
             </div>
         </div>
