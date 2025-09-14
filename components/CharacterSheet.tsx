@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Character, Ability, Skill } from '../types';
 import { SKILL_ABILITY_MAP } from '../constants';
@@ -40,7 +41,7 @@ export const CharacterSheet: React.FC<CharacterSheetProps> = ({ character }) => 
         <div>
             <div className="text-center mb-4">
                 <h2 className="font-medieval text-3xl text-yellow-400">{character.name}</h2>
-                <p className="text-lg text-gray-300">Level {character.level} {character.className}</p>
+                <p className="text-lg text-gray-300">Level {character.level}</p>
                 {character.isNpc && <p className="text-sm text-cyan-400 italic">[NPC Companion]</p>}
             </div>
 

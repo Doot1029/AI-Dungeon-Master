@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { Character, ClassName, Ability, Skill } from '../types';
-import { CLASS_PROFICIENCIES, CLASS_BASE_STATS } from '../constants';
+import { Character, Ability, Skill } from '../types';
 import { generatePersonality } from '../services/geminiService';
 
 interface CharacterCreatorProps {
@@ -9,6 +9,8 @@ interface CharacterCreatorProps {
     characterToEdit: { character: Character; index: number; } | null;
     isPgMode: boolean;
 }
+
+const MAX_SKILLS = 3;
 
 // Helper to roll 4d6 and drop the lowest
 const rollStat = (): number => {
@@ -29,26 +31,26 @@ const generateInitialScores = (): Record<Ability, number> => ({
 
 export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCancelEdit, characterToEdit, isPgMode }) => {
     const [name, setName] = useState('');
-    const [className, setClassName] = useState<ClassName>(ClassName.FIGHTER);
     const [scores, setScores] = useState<Record<Ability, number>>(generateInitialScores());
     const [personality, setPersonality] = useState('');
     const [isNpc, setIsNpc] = useState(false);
     const [isGeneratingBio, setIsGeneratingBio] = useState(false);
+    const [selectedSkills, setSelectedSkills] = useState<Skill[]>([]);
     
     useEffect(() => {
         if (characterToEdit) {
             setName(characterToEdit.character.name);
-            setClassName(characterToEdit.character.className);
             setScores(characterToEdit.character.scores);
             setPersonality(characterToEdit.character.personality);
             setIsNpc(characterToEdit.character.isNpc);
+            setSelectedSkills(characterToEdit.character.proficiencies);
         } else {
             // Reset form for a new character
             setName('');
-            setClassName(ClassName.FIGHTER);
             setScores(generateInitialScores());
             setPersonality('');
             setIsNpc(false);
+            setSelectedSkills([]);
         }
     }, [characterToEdit]);
 
@@ -63,7 +65,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
         }
         setIsGeneratingBio(true);
         try {
-            const newBio = await generatePersonality(name, className, isPgMode);
+            const newBio = await generatePersonality(name, isPgMode);
             setPersonality(newBio);
         } catch (error) {
             console.error(error);
@@ -73,6 +75,18 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
         }
     };
 
+    const handleSkillToggle = (skill: Skill) => {
+        setSelectedSkills(prev => {
+            if (prev.includes(skill)) {
+                return prev.filter(s => s !== skill);
+            }
+            if (prev.length < MAX_SKILLS) {
+                return [...prev, skill];
+            }
+            return prev;
+        });
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) {
@@ -80,22 +94,22 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
             return;
         }
 
-        const baseStats = CLASS_BASE_STATS[className];
+        const baseHp = 8;
+        const baseMp = 4;
         const getModifier = (score: number) => Math.floor((score - 10) / 2);
         const conModifier = getModifier(scores[Ability.CON]);
         const intModifier = getModifier(scores[Ability.INT]);
 
-        const maxHp = baseStats.hp + conModifier;
-        const maxMp = baseStats.mp + intModifier;
+        const maxHp = baseHp + conModifier;
+        const maxMp = baseMp + intModifier;
         const coins = Math.floor(Math.random() * 20) + 10; // 4d4+10 approx
 
         const characterData: Character = {
             name,
-            className,
             level: 1,
             proficiencyBonus: 2,
             scores,
-            proficiencies: CLASS_PROFICIENCIES[className],
+            proficiencies: selectedSkills,
             personality,
             isNpc,
             hp: characterToEdit?.character.hp ?? maxHp,
@@ -111,9 +125,9 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
 
         if (!characterToEdit) {
             setName('');
-            setClassName(ClassName.FIGHTER);
             setPersonality('');
             setIsNpc(false);
+            setSelectedSkills([]);
             handleRollStats();
         }
     };
@@ -135,17 +149,25 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
                         required
                     />
                 </div>
-                 <div>
-                    <label htmlFor="class" className="block text-sm font-bold mb-1 text-gray-300">Class</label>
-                    <select
-                        id="class"
-                        value={className}
-                        onChange={(e) => setClassName(e.target.value as ClassName)}
-                        className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 focus:ring-2 focus:ring-yellow-500 focus:outline-none"
-                    >
-                        {Object.values(ClassName).map(cn => <option key={cn} value={cn}>{cn}</option>)}
-                    </select>
+                
+                <div>
+                    <label className="block text-sm font-bold mb-1 text-gray-300">Skills ({selectedSkills.length}/{MAX_SKILLS})</label>
+                    <div className="bg-gray-900 border border-gray-600 rounded p-2 grid grid-cols-2 gap-x-2 gap-y-1 max-h-32 overflow-y-auto">
+                        {Object.values(Skill).map(skill => (
+                             <label key={skill} className="flex items-center space-x-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedSkills.includes(skill)}
+                                    onChange={() => handleSkillToggle(skill)}
+                                    disabled={!selectedSkills.includes(skill) && selectedSkills.length >= MAX_SKILLS}
+                                    className="h-4 w-4 rounded border-gray-500 text-yellow-500 focus:ring-yellow-500 bg-gray-800 disabled:opacity-50"
+                                />
+                                <span>{skill}</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
+
                  <div>
                     <div className="flex justify-between items-center mb-1">
                         <label htmlFor="personality" className="block text-sm font-bold text-gray-300">Personality Bio</label>

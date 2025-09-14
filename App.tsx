@@ -13,6 +13,21 @@ import { initialCharacters } from './constants';
 import { useAudio } from './hooks/useAudio';
 
 type Tab = 'story' | 'location' | 'quests';
+const SAVE_GAME_KEY = 'aiDungeonMasterSave';
+
+interface SaveData {
+    gameState: GameState;
+    characters: Character[];
+    activeCharacterIndex: number;
+    storyHistory: StoryPart[];
+    currentChoices: Choice[];
+    prompt: string;
+    isPgMode: boolean;
+    worldState: WorldState;
+    quests: Quest[];
+    partyReputation: number;
+}
+
 
 const GearIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -52,6 +67,7 @@ const App: React.FC = () => {
     const [worldState, setWorldState] = useState<WorldState>({});
     const [quests, setQuests] = useState<Quest[]>([]);
     const [partyReputation, setPartyReputation] = useState<number>(0);
+    const [hasSaveGame, setHasSaveGame] = useState(false);
 
     const storyEndRef = useRef<HTMLDivElement>(null);
     const activeCharacter = characters[activeCharacterIndex];
@@ -77,6 +93,55 @@ const App: React.FC = () => {
             return () => clearTimeout(timer);
         }
     }, [activeCharacterIndex, gameState, isLoading, characters]);
+
+    const saveGame = useCallback(() => {
+        const saveData: SaveData = {
+            gameState, characters, activeCharacterIndex, storyHistory,
+            currentChoices, prompt, isPgMode, worldState, quests, partyReputation,
+        };
+        localStorage.setItem(SAVE_GAME_KEY, JSON.stringify(saveData));
+        setHasSaveGame(true);
+    }, [
+        gameState, characters, activeCharacterIndex, storyHistory,
+        currentChoices, prompt, isPgMode, worldState, quests, partyReputation
+    ]);
+
+    const loadGame = () => {
+        const savedDataString = localStorage.getItem(SAVE_GAME_KEY);
+        if (savedDataString) {
+            const savedData: SaveData = JSON.parse(savedDataString);
+            setGameState(savedData.gameState);
+            setCharacters(savedData.characters);
+            setActiveCharacterIndex(savedData.activeCharacterIndex);
+            setStoryHistory(savedData.storyHistory);
+            setCurrentChoices(savedData.currentChoices);
+            setPrompt(savedData.prompt);
+            setIsPgMode(savedData.isPgMode);
+            setWorldState(savedData.worldState);
+            setQuests(savedData.quests);
+            setPartyReputation(savedData.partyReputation);
+        }
+    };
+
+    const deleteSave = () => {
+        localStorage.removeItem(SAVE_GAME_KEY);
+        setHasSaveGame(false);
+    };
+    
+    // Check for save game on initial load
+    useEffect(() => {
+        const savedData = localStorage.getItem(SAVE_GAME_KEY);
+        if (savedData) {
+            setHasSaveGame(true);
+        }
+    }, []);
+
+    // Auto-save
+    useEffect(() => {
+        if (gameState === GameState.IN_PROGRESS) {
+            saveGame();
+        }
+    }, [storyHistory, characters, worldState, quests, partyReputation, activeCharacterIndex, gameState, saveGame]);
 
 
     const handleSpeakText = (text: string) => {
@@ -135,11 +200,11 @@ const App: React.FC = () => {
 
     const getPartyComposition = (forAI: boolean = true) => {
         if (!forAI) {
-             return characters.map(c => `${c.name} (${c.className})`).join(', ');
+             return characters.map(c => c.name).join(', ');
         }
         const presentCharacters = characters.filter(c => c.locationId === currentLocationId);
         return presentCharacters.map(c => 
-            `- ${c.name} (${c.className}): ${c.isNpc ? '[NPC]' : '[PLAYER]'}\n  HP: ${c.hp}/${c.maxHp}, MP: ${c.mp}/${c.maxMp}, Coins: ${c.coins}\n  Personality: ${c.personality || 'Not defined.'}\n  Proficiencies: ${c.proficiencies.join(', ')}`
+            `- ${c.name}: ${c.isNpc ? '[NPC]' : '[PLAYER]'}\n  HP: ${c.hp}/${c.maxHp}, MP: ${c.mp}/${c.maxMp}, Coins: ${c.coins}\n  Personality: ${c.personality || 'Not defined.'}\n  Proficiencies: ${c.proficiencies.join(', ')}`
         ).join('\n');
     };
     
@@ -148,6 +213,11 @@ const App: React.FC = () => {
            setActiveCharacterIndex(prevIndex => (prevIndex + 1) % characters.length);
         }
     }, [characters.length]);
+    
+    const handleBeginSaga = () => {
+        deleteSave();
+        setGameState(GameState.AWAITING_PROMPT);
+    }
 
     const handleStartAdventure = async () => {
         if (!prompt.trim()) {
@@ -415,14 +485,19 @@ Based on this, continue the story. Remember to provide choices for the next play
     };
 
     const restartGame = () => {
-        setGameState(GameState.CHARACTER_SELECTION);
-        setStoryHistory([]);
-        setCurrentChoices([]);
-        setPrompt('');
-        setError(null);
-        setWorldState({});
-        setQuests([]);
-        window.speechSynthesis.cancel();
+        if (window.confirm("Are you sure you want to start a new game? This will delete your saved progress.")) {
+            setGameState(GameState.CHARACTER_SELECTION);
+            setStoryHistory([]);
+            setCurrentChoices([]);
+            setPrompt('');
+            setError(null);
+            setWorldState({});
+            setQuests([]);
+            setCharacters(initialCharacters);
+            setActiveCharacterIndex(0);
+            deleteSave();
+            window.speechSynthesis.cancel();
+        }
     }
 
     const latestNarration = storyHistory.slice().reverse().find(part => part.type === 'narrative');
@@ -443,7 +518,7 @@ Based on this, continue the story. Remember to provide choices for the next play
 
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
-            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} />}
+            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} onSaveGame={saveGame} />}
             <div className="min-h-screen bg-gray-900 bg-opacity-80 backdrop-blur-sm flex flex-col items-center p-4 sm:p-6 md:p-8 relative">
                 <div className="absolute top-4 right-4 z-10">
                     <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-yellow-300 transition-colors p-2 rounded-full bg-gray-800 bg-opacity-50 hover:bg-opacity-80" aria-label="Open settings"><GearIcon /></button>
@@ -468,7 +543,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                     <div key={index} className={`flex items-center justify-between gap-2 p-2 rounded-md transition-all duration-300 ${activeCharacterIndex === index ? 'bg-yellow-500/20 ring-2 ring-yellow-400' : 'bg-gray-900/50'}`}>
                                         <div className="flex-grow text-left text-sm">
                                             <p className={`font-bold ${activeCharacterIndex === index ? 'text-yellow-300' : ''}`}>{char.name}</p>
-                                            <p className="text-xs opacity-80">{char.className} {char.isNpc && <span className="text-cyan-300 italic">[NPC]</span>}</p>
+                                            <p className="text-xs opacity-80">{char.isNpc && <span className="text-cyan-300 italic">[NPC]</span>}</p>
                                             {gameState === GameState.IN_PROGRESS && char.locationId !== currentLocationId && (
                                                 <p className="text-xs text-purple-300 italic">@ {worldState[char.locationId]?.name || 'Unknown'}</p>
                                             )}
@@ -492,12 +567,17 @@ Based on this, continue the story. Remember to provide choices for the next play
                     {/* Right Panels: Story, Location, etc. */}
                     <div className="lg:col-span-2 flex flex-col">
                          {gameState !== GameState.IN_PROGRESS ? (
-                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col flex-grow">
+                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col flex-grow items-center justify-center">
                                 {gameState === GameState.CHARACTER_SELECTION && ( <>
                                     <h2 className="font-medieval text-4xl text-yellow-400 mb-4 text-center">Welcome, Adventurer!</h2>
                                     {characters.length > 0 ? ( <>
                                         <p className="mb-6 max-w-md mx-auto text-center">Your party assembles. When you are ready, the tale can begin.</p>
-                                        <button onClick={() => setGameState(GameState.AWAITING_PROMPT)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 self-center">Begin Your Saga</button>
+                                        <div className="flex flex-col items-center gap-4">
+                                            <button onClick={handleBeginSaga} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-transform transform hover:scale-105 self-center">Start New Saga</button>
+                                            {hasSaveGame && (
+                                                <button onClick={loadGame} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition-transform transform hover:scale-105 self-center">Continue Adventure</button>
+                                            )}
+                                        </div>
                                     </> ) : ( <p className="mb-6 max-w-md mx-auto text-center">Your party is empty. Use the 'Create a Hero' panel to begin.</p> )}
                                 </>)}
                                 

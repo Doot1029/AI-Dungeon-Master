@@ -1,13 +1,23 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 
 interface SettingsMenuProps {
     isPgMode: boolean;
     onPgModeChange: (enabled: boolean) => void;
     onClose: () => void;
     onExportStory: () => void;
+    onSaveGame: () => void;
 }
 
-export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeChange, onClose, onExportStory }) => {
+export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeChange, onClose, onExportStory, onSaveGame }) => {
+    const [isSaved, setIsSaved] = useState(false);
+
+    const handleSave = () => {
+        onSaveGame();
+        setIsSaved(true);
+        setTimeout(() => setIsSaved(false), 2000);
+    }
+
     return (
         <div 
             className="fixed inset-0 bg-black bg-opacity-50 z-40"
@@ -25,6 +35,19 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeCh
                 </div>
                 
                 <div className="space-y-6">
+                     <div className="p-3 bg-gray-700 rounded-lg">
+                        <h4 className="font-bold text-gray-200 mb-2">Save Game</h4>
+                        <p className="text-xs text-gray-400 mb-3">
+                            Save your current progress. The game also auto-saves.
+                        </p>
+                        <button 
+                            onClick={handleSave}
+                            className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
+                        >
+                            {isSaved ? 'Saved!' : 'Save Progress'}
+                        </button>
+                    </div>
+
                     <div className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
                         <div>
                             <label htmlFor="pg-toggle" className="font-bold text-gray-200">PG Mode</label>

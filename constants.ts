@@ -1,5 +1,5 @@
 
-import { Ability, Skill, ClassName, Character } from './types';
+import { Ability, Skill, Character } from './types';
 
 export const SKILL_ABILITY_MAP: Record<Skill, Ability> = {
     [Skill.ACROBATICS]: Ability.DEX,
@@ -21,21 +21,6 @@ export const SKILL_ABILITY_MAP: Record<Skill, Ability> = {
     [Skill.STEALTH]: Ability.DEX,
     [Skill.SURVIVAL]: Ability.WIS,
 };
-
-export const CLASS_PROFICIENCIES: Record<ClassName, Skill[]> = {
-    [ClassName.FIGHTER]: [Skill.ATHLETICS, Skill.INTIMIDATION],
-    [ClassName.ROGUE]: [Skill.STEALTH, Skill.SLEIGHT_OF_HAND, Skill.ACROBATICS, Skill.DECEPTION],
-    [ClassName.WIZARD]: [Skill.ARCANA, Skill.INVESTIGATION],
-    [ClassName.BARD]: [Skill.PERFORMANCE, Skill.PERSUASION, Skill.DECEPTION],
-};
-
-export const CLASS_BASE_STATS: Record<ClassName, { hp: number; mp: number; }> = {
-    [ClassName.FIGHTER]: { hp: 10, mp: 0 },
-    [ClassName.ROGUE]: { hp: 8, mp: 4 },
-    [ClassName.WIZARD]: { hp: 6, mp: 10 },
-    [ClassName.BARD]: { hp: 8, mp: 8 },
-};
-
 
 export const DIFFICULTY_MAP: Record<number, string> = {
     5: 'Very Easy',

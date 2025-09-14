@@ -29,13 +29,6 @@ export enum Skill {
     SURVIVAL = 'Survival'
 }
 
-export enum ClassName {
-    FIGHTER = 'Fighter',
-    ROGUE = 'Rogue',
-    WIZARD = 'Wizard',
-    BARD = 'Bard',
-}
-
 export interface Item {
     name: string;
     description: string;
@@ -51,7 +44,6 @@ export interface Quest {
 
 export interface Character {
     name: string;
-    className: ClassName;
     level: number;
     proficiencyBonus: number;
     scores: Record<Ability, number>;

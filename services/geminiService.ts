@@ -1,21 +1,15 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection, ClassName } from "../types";
-
-// --- IMPORTANT ---
-// PASTE YOUR GEMINI API KEY HERE.
-// This key will be visible in your code if you deploy this to a public repository.
-// It is strongly recommended to use this method for local development or private sites only.
-const API_KEY = "AIzaSyDA3t3eeSYvuzszy2-0l6wkNxGcCyyLjA8";
+import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection } from "../types";
 
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = (): GoogleGenAI => {
     if (ai) return ai;
-    if (!API_KEY || API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
-        throw new Error("API key is missing. Please paste your Gemini API key into services/geminiService.ts");
+    if (!process.env.API_KEY) {
+        throw new Error("API key is missing. Make sure the API_KEY environment variable is set.");
     }
-    ai = new GoogleGenAI({ apiKey: API_KEY });
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai;
 };
 
@@ -185,7 +179,7 @@ const callApi = async <T>(prompt: string, systemInstruction: string, schema: obj
 
     } catch (error) {
         console.error("Error communicating with Gemini:", error);
-        throw new Error("Failed to communicate with the AI Dungeon Master. Have you set your API key in services/geminiService.ts?");
+        throw new Error("Failed to communicate with the AI Dungeon Master. The API_KEY environment variable might be invalid or missing.");
     }
 }
 
@@ -246,13 +240,11 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
     }
 };
 
-export const generatePersonality = async (name: string, className: ClassName, isPgMode: boolean): Promise<string> => {
+export const generatePersonality = async (name: string, isPgMode: boolean): Promise<string> => {
     const client = getAiClient();
     try {
-        // Combine system instruction and user prompt into a single prompt to avoid header encoding issues.
         let fullPrompt = `As a creative writer specializing in fantasy characters, generate a short, 1-2 sentence personality bio for a D&D character.
 Character Name: ${name}
-Character Class: ${className}
 Bio constraints: Make it intriguing and give them a unique quirk. The response should be concise, delivered as plain text only, with no quotes or other formatting.`;
 
         if (isPgMode) {
@@ -263,7 +255,6 @@ Bio constraints: Make it intriguing and give them a unique quirk. The response s
             model: "gemini-2.5-flash",
             contents: fullPrompt,
             config: {
-                // systemInstruction is removed and merged into contents.
                 temperature: 0.8,
             },
         });
