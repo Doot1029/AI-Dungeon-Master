@@ -50,6 +50,14 @@ const getReputationDescription = (rep: number): string => {
 }
 
 const App: React.FC = () => {
+    const [apiKeyIsMissing, setApiKeyIsMissing] = useState(false);
+
+    useEffect(() => {
+        if (!process.env.API_KEY) {
+            setApiKeyIsMissing(true);
+        }
+    }, []);
+
     const [gameState, setGameState] = useState<GameState>(GameState.CHARACTER_SELECTION);
     const [characters, setCharacters] = useState<Character[]>(initialCharacters);
     const [activeCharacterIndex, setActiveCharacterIndex] = useState<number>(0);
@@ -584,6 +592,22 @@ Based on this, continue the story. Remember to provide choices for the next play
             deleteSave();
             window.speechSynthesis.cancel();
         }
+    }
+
+    if (apiKeyIsMissing) {
+        return (
+            <div className="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
+                 <div className="bg-gray-800 bg-opacity-90 border border-red-500 rounded-lg p-8 shadow-2xl w-full max-w-md m-4 text-center">
+                    <h2 className="font-medieval text-3xl text-red-400 mb-4">Configuration Error</h2>
+                    <p className="text-gray-300">
+                        The AI Dungeon Master is not configured correctly. The necessary API key for the generative AI service is missing.
+                    </p>
+                    <p className="text-gray-400 text-sm mt-4">
+                        Please contact the application administrator to resolve this issue.
+                    </p>
+                </div>
+            </div>
+        );
     }
 
     const characterToEditData = editingCharacterIndex !== null ? { character: characters[editingCharacterIndex], index: editingCharacterIndex } : null;

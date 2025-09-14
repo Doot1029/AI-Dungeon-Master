@@ -7,7 +7,7 @@ let ai: GoogleGenAI | null = null;
 const getAiClient = (): GoogleGenAI => {
     if (ai) return ai;
     if (!process.env.API_KEY) {
-        throw new Error("API key is missing. Make sure the API_KEY environment variable is set.");
+        throw new Error("AI Service is not configured. The application is missing a required API key. Please contact the administrator.");
     }
     ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     return ai;
@@ -198,7 +198,7 @@ const callApi = async <T>(prompt: string, systemInstruction: string, schema: obj
 
     } catch (error) {
         console.error("Error communicating with Gemini:", error);
-        throw new Error("Failed to communicate with the AI Dungeon Master. The API_KEY environment variable might be invalid or missing.");
+        throw new Error("Failed to communicate with the AI Dungeon Master. The service may be misconfigured or unavailable.");
     }
 }
 
