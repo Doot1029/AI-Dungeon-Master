@@ -1,7 +1,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection, ClassName } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+let ai: GoogleGenAI | null = null;
+
+export const initializeAi = (apiKey: string) => {
+    if (!apiKey) {
+        console.error("API key is missing.");
+        throw new Error("API key is missing.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+};
 
 const allSkills = Object.values(Skill);
 const allActionTypes: ActionType[] = ['do', 'say'];
@@ -38,9 +46,10 @@ const locationResponseSchema = {
         properties: {
           name: { type: Type.STRING },
           description: { type: Type.STRING, description: "A brief description of the NPC, including their appearance and current demeanor." },
-          isHostile: { type: Type.BOOLEAN, description: "Whether this NPC is immediately hostile to the party." }
+          isHostile: { type: Type.BOOLEAN, description: "Whether this NPC is immediately hostile to the party." },
+          opinion: { type: Type.INTEGER, description: "The NPC's initial opinion of the party, from -100 (hostile) to 100 (friendly). Defaults to 0 for neutral." }
         },
-        required: ["name", "description"]
+        required: ["name", "description", "opinion"]
       }
     },
     exits: {
@@ -70,7 +79,7 @@ const actionOutcomeResponseSchema = {
     properties: {
         narrative: {
             type: Type.STRING,
-            description: "A 1-3 paragraph story narrative describing the outcome of the character's action. This should be engaging and reflect the success or failure of the action based on the character's stats. If NPCs are present, describe their reactions or actions."
+            description: "A 1-3 paragraph story narrative describing the outcome of the character's action. This should be engaging and reflect the success or failure of the action based on the character's stats. If NPCs are present, describe their reactions or actions based on their opinions."
         },
         choices: {
             type: Type.ARRAY,
@@ -103,7 +112,7 @@ const actionOutcomeResponseSchema = {
             properties: {
                 objectsToAdd: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING } } } },
                 objectsToRemove: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of object names to remove." },
-                npcsToAdd: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING } } } },
+                npcsToAdd: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, description: { type: Type.STRING }, opinion: { type: Type.INTEGER } } } },
                 npcsToRemove: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of NPC names to remove." },
             }
         },
@@ -119,6 +128,22 @@ const actionOutcomeResponseSchema = {
                 },
                 required: ["title", "status"]
             }
+        },
+        partyReputationChange: {
+            type: Type.INTEGER,
+            description: "Change in the party's overall reputation (e.g., +5 for a good deed, -10 for a crime). Omit if no change."
+        },
+        npcOpinionChanges: {
+            type: Type.ARRAY,
+            description: "Changes to specific NPCs' opinions of the party. Only include NPCs in the current location.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    npcName: { type: Type.STRING },
+                    opinionChange: { type: Type.INTEGER }
+                },
+                required: ["npcName", "opinionChange"]
+            }
         }
     },
     required: ["narrative", "choices"],
@@ -133,6 +158,9 @@ const getBaseSystemInstruction = (isPgMode: boolean) => {
 };
 
 const callApi = async <T>(prompt: string, systemInstruction: string, schema: object): Promise<T> => {
+     if (!ai) {
+        throw new Error("AI service is not initialized. Please set the API key.");
+    }
      try {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -160,12 +188,13 @@ export const generateLocation = async (prompt: string, isPgMode: boolean): Promi
 };
 
 export const generateActionOutcome = async (prompt: string, isPgMode: boolean): Promise<ActionOutcome> => {
-    const systemInstruction = `${getBaseSystemInstruction(isPgMode)} Your role is to determine the outcome of a player's action. The game is turn-based. You will be given the full context: the world, the party, the current location, and the current character's action. Based on the active character's stats and skills, decide if their action succeeds or fails and by how much. Narrate this outcome compellingly. Then, provide relevant state changes (HP, items, etc.) and new choices for the NEXT player character to take on their turn. Have any NPCs in the scene react or act realistically based on their personality and the situation.`;
+    const systemInstruction = `${getBaseSystemInstruction(isPgMode)} Your role is to determine the outcome of a player's action. The game is turn-based. You will be given the full context: the world, the party, their locations and reputation, the active character's location, and their action. Based on the active character's stats and skills, decide if their action succeeds or fails and by how much. Narrate this outcome compellingly. Then, provide relevant state changes (HP, items, reputation, etc.) and new choices for the NEXT player character to take on their turn. Have any NPCs in the scene react or act realistically based on their personality, their opinion of the party, and the situation. Party members can be in different locations.`;
     return callApi<ActionOutcome>(prompt, systemInstruction, actionOutcomeResponseSchema);
 }
 
 
 export const generatePromptIdea = async (isPgMode: boolean): Promise<string> => {
+    if (!ai) throw new Error("AI service not initialized.");
     try {
         let content = `Generate a creative and intriguing D&D story prompt for a party of adventurers. The prompt should be about 2-3 sentences long and set a clear scene and potential objective. Do not surround the response with quotes or any other formatting, just return the plain text of the prompt. Example: Three adventurers walk into a tavern in the misty port city of Neverwinter. A cloaked figure in the corner beckons them over...`;
         if (isPgMode) {
@@ -188,6 +217,7 @@ export const generatePromptIdea = async (isPgMode: boolean): Promise<string> => 
 };
 
 export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<string> => {
+    if (!ai) throw new Error("AI service not initialized.");
     try {
         let content = `Generate a simple, one or two-sentence D&D story prompt suitable for a quick game or for a younger audience. The prompt should present a clear, immediate situation. Do not surround the response with quotes or any other formatting, just return the plain text of the prompt. Example: You find a mysterious, glowing key in an ancient forest.`;
         if (isPgMode) {
@@ -210,6 +240,7 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
 };
 
 export const generatePersonality = async (name: string, className: ClassName, isPgMode: boolean): Promise<string> => {
+    if (!ai) throw new Error("AI service not initialized.");
     try {
         let content = `Generate a short, 1-2 sentence personality bio for a D&D character named ${name} who is a ${className}. Make it intriguing and give them a unique quirk. Do not surround the response with quotes or any other formatting, just return the plain text of the bio.`;
          if (isPgMode) {

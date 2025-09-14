@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Character, StoryPart, Choice, GameState, LocationData, WorldState, CardinalDirection, ActionType, Quest } from './types';
-import { generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
+import { initializeAi, generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
 import { CharacterCreator } from './components/CharacterCreator';
 import { CharacterSheet } from './components/CharacterSheet';
 import { StoryPanel } from './components/StoryPanel';
@@ -8,6 +8,7 @@ import { ChoicesPanel } from './components/ChoicesPanel';
 import { LocationPanel } from './components/LocationPanel';
 import { QuestPanel } from './components/QuestPanel';
 import { SettingsMenu } from './components/SettingsMenu';
+import { ApiKeyModal } from './components/ApiKeyModal';
 import { initialCharacters } from './constants';
 import { useAudio } from './hooks/useAudio';
 
@@ -23,8 +24,18 @@ const GearIcon = () => (
 const EditIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L15.232 5.232z" /></svg> );
 const TrashIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
 
+const getReputationDescription = (rep: number): string => {
+    if (rep > 75) return 'Heroic';
+    if (rep > 40) return 'Honorable';
+    if (rep > 10) return 'Respected';
+    if (rep > -10) return 'Neutral';
+    if (rep > -40) return 'Unsavory';
+    if (rep > -75) return 'Feared';
+    return 'Villainous';
+}
+
 const App: React.FC = () => {
-    const [gameState, setGameState] = useState<GameState>(GameState.CHARACTER_SELECTION);
+    const [gameState, setGameState] = useState<GameState>(GameState.API_KEY_NEEDED);
     const [characters, setCharacters] = useState<Character[]>(initialCharacters);
     const [activeCharacterIndex, setActiveCharacterIndex] = useState<number>(0);
     const [storyHistory, setStoryHistory] = useState<StoryPart[]>([]);
@@ -39,12 +50,21 @@ const App: React.FC = () => {
     
     // World State
     const [worldState, setWorldState] = useState<WorldState>({});
-    const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
     const [quests, setQuests] = useState<Quest[]>([]);
+    const [partyReputation, setPartyReputation] = useState<number>(0);
 
     const storyEndRef = useRef<HTMLDivElement>(null);
     const activeCharacter = characters[activeCharacterIndex];
+    const currentLocationId = activeCharacter?.locationId;
     const currentLocation = currentLocationId ? worldState[currentLocationId] : null;
+
+    useEffect(() => {
+        // Check for API key on component mount
+        const storedApiKey = sessionStorage.getItem('gemini-api-key');
+        if (storedApiKey) {
+            handleApiKeySubmit(storedApiKey);
+        }
+    }, []);
 
     useEffect(() => {
         storyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -80,6 +100,16 @@ const App: React.FC = () => {
         catch (err) { console.error('Failed to copy text: ', err); }
     };
     
+    const handleApiKeySubmit = (apiKey: string) => {
+        try {
+            initializeAi(apiKey);
+            sessionStorage.setItem('gemini-api-key', apiKey);
+            setGameState(GameState.CHARACTER_SELECTION);
+        } catch (e: any) {
+            setError(e.message || "Failed to initialize AI service.");
+        }
+    };
+
     const handleSaveCharacter = (character: Character, index?: number) => {
         const newCharacters = [...characters];
         if (index !== undefined) {
@@ -125,7 +155,8 @@ const App: React.FC = () => {
         if (!forAI) {
              return characters.map(c => `${c.name} (${c.className})`).join(', ');
         }
-        return characters.map(c => 
+        const presentCharacters = characters.filter(c => c.locationId === currentLocationId);
+        return presentCharacters.map(c => 
             `- ${c.name} (${c.className}): ${c.isNpc ? '[NPC]' : '[PLAYER]'}\n  HP: ${c.hp}/${c.maxHp}, MP: ${c.mp}/${c.maxMp}, Coins: ${c.coins}\n  Personality: ${c.personality || 'Not defined.'}\n  Proficiencies: ${c.proficiencies.join(', ')}`
         ).join('\n');
     };
@@ -147,6 +178,7 @@ const App: React.FC = () => {
         setStoryHistory([]);
         setWorldState({});
         setQuests([]);
+        setPartyReputation(0);
         setActiveCharacterIndex(0);
 
         try {
@@ -156,7 +188,9 @@ const App: React.FC = () => {
             
             const newWorldState: WorldState = { [startId]: initialLocation };
             setWorldState(newWorldState);
-            setCurrentLocationId(startId);
+            
+            // Set all characters to the starting location
+            setCharacters(prev => prev.map(char => ({...char, locationId: startId })));
 
             const welcomeText = `Your party, consisting of ${getPartyComposition(false)}, finds themselves at the ${initialLocation.name}.`;
             const firstNarrative : StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `${welcomeText}\n\n${initialLocation.description}`, characterName: 'DM' };
@@ -178,7 +212,6 @@ const App: React.FC = () => {
         setIsLoading(true);
         setError(null);
         
-        // Don't show choices from a previous turn
         if (!activeCharacter.isNpc) {
            setCurrentChoices([]);
         }
@@ -206,9 +239,11 @@ WORLD STATE:
 Current Location: ${currentLocation?.name} (${currentLocation?.id})
 - Description: ${currentLocation?.description}
 - Objects: ${currentLocation?.objects.map(o => o.name).join(', ') || 'None'}
-- NPCs: ${currentLocation?.npcs.map(n => n.name).join(', ') || 'None'}
+- NPCs: ${currentLocation?.npcs.map(n => `${n.name} (Opinion: ${n.opinion})`).join(', ') || 'None'}
 
 PARTY STATE (Turn Order):
+Party Reputation: ${partyReputation} (${getReputationDescription(partyReputation)})
+Party members present at this location:
 ${getPartyComposition(true)}
 
 ACTIVE CHARACTER INVENTORY (${activeCharacter.name}):
@@ -265,6 +300,26 @@ Based on this, continue the story. Remember to provide choices for the next play
                     }
                     return char;
                 }));
+            }
+            
+            // Update Reputation & Opinions
+            if(outcome.partyReputationChange) {
+                setPartyReputation(prev => prev + outcome.partyReputationChange!);
+            }
+            if(outcome.npcOpinionChanges && currentLocationId) {
+                setWorldState(prevWorld => {
+                    const newWorld = {...prevWorld};
+                    const loc = {...newWorld[currentLocationId]};
+                    loc.npcs = [...loc.npcs];
+                    outcome.npcOpinionChanges!.forEach(change => {
+                        const npcIndex = loc.npcs.findIndex(n => n.name === change.npcName);
+                        if(npcIndex > -1) {
+                            loc.npcs[npcIndex] = {...loc.npcs[npcIndex], opinion: loc.npcs[npcIndex].opinion + change.opinionChange };
+                        }
+                    });
+                    newWorld[currentLocationId] = loc;
+                    return newWorld;
+                });
             }
 
             // Update Quests
@@ -328,32 +383,34 @@ Based on this, continue the story. Remember to provide choices for the next play
         if (direction === 'west') newX--;
         const newLocationId = `${newX},${newY}`;
 
-        const travelMessage: StoryPart = {id: crypto.randomUUID(), type: 'travel', text: `The party travels ${direction}...`, characterName: 'System'};
+        const travelMessage: StoryPart = {id: crypto.randomUUID(), type: 'travel', text: `${activeCharacter.name} travels ${direction}...`, characterName: 'System'};
         
         setStoryHistory(prev => [...prev, travelMessage]);
 
         try {
-            if (worldState[newLocationId]) {
-                const newLocation = worldState[newLocationId];
-                setCurrentLocationId(newLocationId);
-                const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `You arrive at ${newLocation.name}.\n\n${newLocation.description}`, characterName: 'DM' };
-                const newHistory = [...storyHistory, travelMessage, narrative];
-                setStoryHistory(newHistory);
-                await handleAction({text: "Look around the new area.", actionType: 'auto'}, newHistory, true);
+            let nextLocation : LocationData;
 
+            if (worldState[newLocationId]) {
+                nextLocation = worldState[newLocationId];
+                const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `${activeCharacter.name} arrives at ${nextLocation.name}.\n\n${nextLocation.description}`, characterName: 'DM' };
+                setStoryHistory(prev => [...prev, narrative]);
             } else {
-                const prompt = `The party travels ${direction} from "${currentLocation?.name}". Describe the new, distinct location they discover. It should not be the same as the previous one. Previous location description: ${currentLocation?.description}`;
-                const newLocation = await generateLocation(prompt, isPgMode);
-                newLocation.id = newLocationId;
+                const prompt = `The character travels ${direction} from "${currentLocation?.name}". Describe the new, distinct location they discover. It should not be the same as the previous one. Previous location description: ${currentLocation?.description}`;
+                nextLocation = await generateLocation(prompt, isPgMode);
+                nextLocation.id = newLocationId;
                 
-                setWorldState(prev => ({...prev, [newLocationId]: newLocation}));
-                setCurrentLocationId(newLocationId);
+                setWorldState(prev => ({...prev, [newLocationId]: nextLocation}));
                 
-                const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `You discover ${newLocation.name}.\n\n${newLocation.description}`, characterName: 'DM' };
-                 const newHistory = [...storyHistory, travelMessage, narrative];
-                setStoryHistory(newHistory);
-                await handleAction({text: "Look around the newly discovered area.", actionType: 'auto'}, newHistory, true);
+                const narrative: StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `${activeCharacter.name} discovers ${nextLocation.name}.\n\n${nextLocation.description}`, characterName: 'DM' };
+                setStoryHistory(prev => [...prev, narrative]);
             }
+            
+            // Update character's location
+            setCharacters(prev => prev.map((char, index) => index === activeCharacterIndex ? {...char, locationId: newLocationId} : char));
+
+            // Generate choices for the new location *after* the character has moved.
+            await handleAction({text: "Look around the new area.", actionType: 'auto'}, storyHistory, true);
+
         } catch(e) {
              console.error(e);
              setError("The path ahead is unclear. The AI stumbled. Try again.");
@@ -376,13 +433,13 @@ Based on this, continue the story. Remember to provide choices for the next play
     };
 
     const restartGame = () => {
-        setGameState(GameState.CHARACTER_SELECTION);
+        const apiKey = sessionStorage.getItem('gemini-api-key');
+        setGameState(apiKey ? GameState.CHARACTER_SELECTION : GameState.API_KEY_NEEDED);
         setStoryHistory([]);
         setCurrentChoices([]);
         setPrompt('');
         setError(null);
         setWorldState({});
-        setCurrentLocationId(null);
         setQuests([]);
         window.speechSynthesis.cancel();
     }
@@ -403,6 +460,10 @@ Based on this, continue the story. Remember to provide choices for the next play
         </button>
     );
 
+    if (gameState === GameState.API_KEY_NEEDED) {
+        return <ApiKeyModal onApiKeySubmit={handleApiKeySubmit} error={error} />;
+    }
+
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
             {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} />}
@@ -418,13 +479,22 @@ Based on this, continue the story. Remember to provide choices for the next play
                     {/* Left Panel: Party & Character */}
                     <aside className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg">
-                           <h3 className="font-medieval text-2xl text-yellow-400 text-center mb-4">The Party</h3>
+                           <div className="flex justify-between items-center mb-4">
+                             <h3 className="font-medieval text-2xl text-yellow-400 text-center">The Party</h3>
+                             <div className="text-right text-sm">
+                                <p className="font-bold text-gray-300">Reputation</p>
+                                <p className="text-yellow-300">{getReputationDescription(partyReputation)} ({partyReputation})</p>
+                             </div>
+                           </div>
                            <div className="space-y-2 mb-4">
                                 {characters.map((char, index) => (
                                     <div key={index} className={`flex items-center justify-between gap-2 p-2 rounded-md transition-all duration-300 ${activeCharacterIndex === index ? 'bg-yellow-500/20 ring-2 ring-yellow-400' : 'bg-gray-900/50'}`}>
                                         <div className="flex-grow text-left text-sm">
                                             <p className={`font-bold ${activeCharacterIndex === index ? 'text-yellow-300' : ''}`}>{char.name}</p>
                                             <p className="text-xs opacity-80">{char.className} {char.isNpc && <span className="text-cyan-300 italic">[NPC]</span>}</p>
+                                            {gameState === GameState.IN_PROGRESS && char.locationId !== currentLocationId && (
+                                                <p className="text-xs text-purple-300 italic">@ {worldState[char.locationId]?.name || 'Unknown'}</p>
+                                            )}
                                         </div>
                                          {gameState === GameState.CHARACTER_SELECTION ? (
                                             <div className="flex items-center">

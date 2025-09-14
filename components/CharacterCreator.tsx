@@ -104,6 +104,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
             maxMp: maxMp,
             coins: characterToEdit?.character.coins ?? coins,
             inventory: characterToEdit?.character.inventory ?? [],
+            locationId: characterToEdit?.character.locationId ?? '',
         };
         
         onSave(characterData, characterToEdit?.index);

@@ -63,6 +63,7 @@ export interface Character {
     maxMp: number;
     coins: number;
     inventory: Item[];
+    locationId: string;
 }
 
 export interface StoryPart {
@@ -85,6 +86,7 @@ export enum GameState {
     CHARACTER_SELECTION = 'CHARACTER_SELECTION',
     AWAITING_PROMPT = 'AWAITING_PROMPT',
     IN_PROGRESS = 'IN_PROGRESS',
+    API_KEY_NEEDED = 'API_KEY_NEEDED',
 }
 
 // World State Types
@@ -97,6 +99,7 @@ export interface WorldNpc {
     name: string;
     description: string;
     isHostile?: boolean;
+    opinion: number; // -100 to 100
 }
 
 export type CardinalDirection = 'north' | 'south' | 'east' | 'west';
@@ -134,10 +137,18 @@ export interface QuestUpdate {
     status: 'active' | 'completed' | 'failed';
 }
 
+export interface NpcOpinionChange {
+    npcName: string;
+    opinionChange: number;
+}
+
+
 export interface ActionOutcome {
     narrative: string;
     choices: Choice[];
     characterUpdates?: CharacterUpdate;
     locationUpdates?: LocationUpdate;
     questUpdates?: QuestUpdate[];
+    partyReputationChange?: number;
+    npcOpinionChanges?: NpcOpinionChange[];
 }

@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
-import { LocationData, CardinalDirection } from '../types';
+import { LocationData, CardinalDirection, WorldNpc, WorldObject } from '../types';
 
 interface LocationPanelProps {
     location: LocationData | null;
     onTravel: (direction: CardinalDirection) => void;
     onInteract: (actionText: string) => void;
     isLoading: boolean;
+}
+
+const getOpinionDescription = (opinion: number): string => {
+    if (opinion > 75) return 'Devoted';
+    if (opinion > 40) return 'Friendly';
+    if (opinion > 10) return 'Amicable';
+    if (opinion >= -10) return 'Neutral';
+    if (opinion >= -40) return 'Wary';
+    if (opinion >= -75) return 'Hostile';
+    return 'Hateful';
 }
 
 const CopyIcon = () => (
@@ -43,14 +53,14 @@ const TravelButton: React.FC<{ direction: CardinalDirection, onTravel: (dir: Car
 };
 
 interface InteractableProps {
-    name: string;
-    description: string;
+    data: WorldObject | WorldNpc;
     type: 'object' | 'npc';
     onInteract: (action: string) => void;
     isLoading: boolean;
 }
 
-const Interactable: React.FC<InteractableProps> = ({ name, description, type, onInteract, isLoading }) => {
+const Interactable: React.FC<InteractableProps> = ({ data, type, onInteract, isLoading }) => {
+    const { name, description } = data;
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [activeAction, setActiveAction] = useState<string | null>(null);
@@ -92,6 +102,7 @@ const Interactable: React.FC<InteractableProps> = ({ name, description, type, on
         <div className="py-2">
             <button onClick={() => setIsOpen(!isOpen)} className="w-full text-left font-bold text-gray-200 hover:text-yellow-300 flex justify-between items-center focus:outline-none">
                 <span>{name}</span>
+                 {type === 'npc' && <span className="text-xs text-gray-400">{getOpinionDescription((data as WorldNpc).opinion)}</span>}
                 <span className={`transform transition-transform text-xs ${isOpen ? 'rotate-180' : ''}`}>▼</span>
             </button>
             {isOpen && (
@@ -151,7 +162,7 @@ export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel
         }
         if (location.npcs.length > 0) {
             parts.push('\n*People:*');
-            location.npcs.forEach(npc => parts.push(`- ${npc.name}: ${npc.description}`));
+            location.npcs.forEach(npc => parts.push(`- ${npc.name} (${getOpinionDescription(npc.opinion)}): ${npc.description}`));
         }
         if (location.exits.length > 0) {
             parts.push(`\n*Exits:* ${location.exits.map(e => e.charAt(0).toUpperCase() + e.slice(1)).join(', ')}`);
@@ -182,13 +193,13 @@ export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel
                     {location.objects.length > 0 && (
                         <div>
                             <h4 className="font-bold text-yellow-300 pt-2 pb-1">Objects:</h4>
-                            {location.objects.map(obj => <Interactable key={obj.name} {...obj} type="object" onInteract={onInteract} isLoading={isLoading} />)}
+                            {location.objects.map(obj => <Interactable key={obj.name} data={obj} type="object" onInteract={onInteract} isLoading={isLoading} />)}
                         </div>
                     )}
                     {location.npcs.length > 0 && (
                         <div>
                             <h4 className="font-bold text-yellow-300 pt-2 pb-1">People:</h4>
-                            {location.npcs.map(npc => <Interactable key={npc.name} {...npc} type="npc" onInteract={onInteract} isLoading={isLoading} />)}
+                            {location.npcs.map(npc => <Interactable key={npc.name} data={npc} type="npc" onInteract={onInteract} isLoading={isLoading} />)}
                         </div>
                     )}
                 </div>
