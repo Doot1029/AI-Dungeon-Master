@@ -29,7 +29,14 @@
 </script>
 </head>
   <body class="bg-gray-900 text-gray-200">
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <div id="root">
+      <div class="flex items-center justify-center min-h-screen">
+        <div class="text-center">
+          <h1 class="font-medieval text-4xl text-yellow-300 animate-pulse">Loading the Adventure...</h1>
+          <p class="text-gray-400 mt-2">If this message persists, please check the browser console (F12) for errors.</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
