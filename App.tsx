@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Character, StoryPart, Choice, GameState, LocationData, WorldState, CardinalDirection, ActionType, Quest } from './types';
-import { generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
+import { generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea, generateIllustration } from './services/geminiService';
 import { CharacterCreator } from './components/CharacterCreator';
 import { CharacterSheet } from './components/CharacterSheet';
 import { StoryPanel } from './components/StoryPanel';
@@ -56,6 +56,7 @@ const App: React.FC = () => {
     const [storyHistory, setStoryHistory] = useState<StoryPart[]>([]);
     const [currentChoices, setCurrentChoices] = useState<Choice[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [prompt, setPrompt] = useState<string>('');
     const [isPgMode, setIsPgMode] = useState<boolean>(true);
@@ -531,6 +532,42 @@ Based on this, continue the story. Remember to provide choices for the next play
             alert(`Failed to import save file: ${e.message}`);
         }
     };
+    
+    const latestNarration = storyHistory.slice().reverse().find(part => part.type === 'narrative');
+
+    const handleGenerateImage = async () => {
+        if (!currentLocation || !latestNarration) return;
+        setIsGeneratingImage(true);
+        setError(null);
+
+        try {
+            const objectsDesc = currentLocation.objects.map(o => o.name).join(', ');
+            const npcsDesc = currentLocation.npcs.map(n => n.name).join(', ');
+
+            const prompt = `Scene: ${currentLocation.name}.
+            Description: ${currentLocation.description}.
+            Objects: ${objectsDesc || 'None'}.
+            People: ${npcsDesc || 'None'}.
+            Latest event: "${latestNarration.text}"`;
+            
+            const imageUrl = await generateIllustration(prompt, isPgMode);
+
+            const imagePart: StoryPart = {
+                id: crypto.randomUUID(),
+                type: 'image',
+                text: `An illustration of the party at ${currentLocation.name}.`,
+                characterName: 'DM',
+                imageUrl: imageUrl,
+            };
+            setStoryHistory(prev => [...prev, imagePart]);
+
+        } catch (e: any) {
+            console.error(e);
+            setError(e.message || "Failed to generate an image. The AI might be busy.");
+        } finally {
+            setIsGeneratingImage(false);
+        }
+    };
 
 
     const restartGame = () => {
@@ -549,7 +586,6 @@ Based on this, continue the story. Remember to provide choices for the next play
         }
     }
 
-    const latestNarration = storyHistory.slice().reverse().find(part => part.type === 'narrative');
     const characterToEditData = editingCharacterIndex !== null ? { character: characters[editingCharacterIndex], index: editingCharacterIndex } : null;
     const hasPlayerCharacter = characters.some(c => !c.isNpc);
 
@@ -659,7 +695,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                             {isLoading && <div className="text-center p-4 italic text-yellow-300">The DM is pondering...</div>}
                                             
                                             {!isLoading && !activeCharacter.isNpc && currentChoices.length > 0 && (
-                                                 <ChoicesPanel choices={currentChoices} onAction={handleAction} character={activeCharacter} isLoading={isLoading} latestNarration={latestNarration} />
+                                                 <ChoicesPanel choices={currentChoices} onAction={handleAction} character={activeCharacter} isLoading={isLoading} latestNarration={latestNarration} onGenerateImage={handleGenerateImage} isGeneratingImage={isGeneratingImage} />
                                             )}
 
                                             {!isLoading && currentChoices.length === 0 && storyHistory.length > 0 && (

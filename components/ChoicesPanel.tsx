@@ -11,6 +11,8 @@ interface ChoicesPanelProps {
     character: Character;
     isLoading: boolean;
     latestNarration: StoryPart | undefined;
+    onGenerateImage: () => void;
+    isGeneratingImage: boolean;
 }
 
 const CopyIcon = () => (
@@ -25,8 +27,13 @@ const CheckIcon = () => (
     </svg>
 );
 
+const ImageIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+);
 
-export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, character, isLoading, latestNarration }) => {
+export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, character, isLoading, latestNarration, onGenerateImage, isGeneratingImage }) => {
     const [isCopied, setIsCopied] = useState(false);
     const [customAction, setCustomAction] = useState('');
 
@@ -120,22 +127,33 @@ export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, c
                 >
                     Pass Turn / Wait
                 </button>
-                {choices.length > 0 && latestNarration && !isLoading && (
-                    <div className="text-center">
+                 <div className="flex items-center gap-2">
+                    {latestNarration && (
+                        <button
+                            onClick={onGenerateImage}
+                            disabled={isLoading || isGeneratingImage}
+                            title="Generate AI Illustration"
+                            aria-label="Generate AI Illustration"
+                            className="inline-flex items-center justify-center p-2 text-gray-400 bg-gray-900 bg-opacity-50 border border-gray-600 rounded-lg hover:text-yellow-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-wait"
+                        >
+                            {isGeneratingImage ? (
+                                <div className="w-5 h-5 border-2 border-gray-400 border-t-yellow-300 rounded-full animate-spin"></div>
+                            ) : (
+                                <ImageIcon />
+                            )}
+                        </button>
+                    )}
+                    {choices.length > 0 && latestNarration && !isLoading && (
                         <button
                             onClick={handleCopyForTexting}
                             title="Copy Story For Texting"
                             aria-label="Copy Story For Texting"
-                            className="inline-flex items-center justify-center gap-2 text-sm text-gray-400 hover:text-yellow-300 transition-colors duration-200 p-2 rounded-lg bg-gray-900 bg-opacity-50 hover:bg-gray-800 border border-gray-600"
+                            className="inline-flex items-center justify-center p-2 text-gray-400 bg-gray-900 bg-opacity-50 border border-gray-600 rounded-lg hover:text-yellow-300 hover:bg-gray-800"
                         >
-                            {isCopied ? (
-                                <CheckIcon />
-                            ) : (
-                                <CopyIcon />
-                            )}
+                            {isCopied ? <CheckIcon /> : <CopyIcon />}
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );

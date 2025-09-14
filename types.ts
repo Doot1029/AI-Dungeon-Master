@@ -61,9 +61,10 @@ export interface Character {
 
 export interface StoryPart {
     id: string;
-    type: 'narrative' | 'action' | 'travel';
+    type: 'narrative' | 'action' | 'travel' | 'image';
     text: string;
     characterName: string;
+    imageUrl?: string;
 }
 
 export type ActionType = 'do' | 'say';
@@ -111,6 +112,7 @@ export type WorldState = Record<string, LocationData>;
 export interface CharacterUpdate {
     hpChange?: number;
     mpChange?: number;
+
     coinsChange?: number;
     inventoryAdd?: Item[];
     inventoryRemove?: string[]; // Names of items to remove
