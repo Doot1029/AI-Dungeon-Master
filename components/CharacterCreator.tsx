@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Character, Ability, Skill } from '../types';
-import { generatePersonality } from '../services/geminiService';
+import { generatePersonalityAndSkills } from '../services/geminiService';
 
 interface CharacterCreatorProps {
     onSave: (character: Character, index?: number) => void;
@@ -65,11 +64,12 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
         }
         setIsGeneratingBio(true);
         try {
-            const newBio = await generatePersonality(name, isPgMode);
+            const { personality: newBio, skills: newSkills } = await generatePersonalityAndSkills(name, isPgMode);
             setPersonality(newBio);
+            setSelectedSkills(newSkills || []);
         } catch (error) {
             console.error(error);
-            alert("Failed to generate a personality bio. Please try again.");
+            alert("Failed to generate a personality and skills. Please try again.");
         } finally {
             setIsGeneratingBio(false);
         }

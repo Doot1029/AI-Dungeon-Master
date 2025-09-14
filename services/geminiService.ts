@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection } from "../types";
 
@@ -152,6 +151,25 @@ const actionOutcomeResponseSchema = {
     required: ["narrative", "choices"],
 };
 
+const personalityAndSkillsResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        personality: {
+            type: Type.STRING,
+            description: "A short, 1-2 sentence personality bio for the character. Make it intriguing and give them a unique quirk."
+        },
+        skills: {
+            type: Type.ARRAY,
+            description: "An array of exactly 3 skills from the provided enum that fit the generated personality.",
+            items: {
+                type: Type.STRING,
+                enum: allSkills,
+            }
+        }
+    },
+    required: ["personality", "skills"],
+};
+
 const getBaseSystemInstruction = (isPgMode: boolean) => {
     let instruction = `You are a master Dungeon Master for a Dungeons & Dragons style RPG. Your goal is to create an engaging, explorable world. You must respond ONLY with a JSON object that adheres to the provided schema.`;
     if (isPgMode) {
@@ -240,28 +258,8 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
     }
 };
 
-export const generatePersonality = async (name: string, isPgMode: boolean): Promise<string> => {
-    const client = getAiClient();
-    try {
-        let fullPrompt = `As a creative writer specializing in fantasy characters, generate a short, 1-2 sentence personality bio for a D&D character.
-Character Name: ${name}
-Bio constraints: Make it intriguing and give them a unique quirk. The response should be concise, delivered as plain text only, with no quotes or other formatting.`;
-
-        if (isPgMode) {
-            fullPrompt += `\nIMPORTANT: The bio must be strictly PG-rated and family-friendly.`;
-        }
-
-        const response = await client.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: fullPrompt,
-            config: {
-                temperature: 0.8,
-            },
-        });
-
-        return response.text.trim();
-    } catch (error) {
-        console.error("Error generating personality with Gemini:", error);
-        throw new Error("Failed to communicate with the AI for a personality bio.");
-    }
+export const generatePersonalityAndSkills = async (name: string, isPgMode: boolean): Promise<{ personality: string; skills: Skill[] }> => {
+    const systemInstruction = `${getBaseSystemInstruction(isPgMode)} Your role is to generate a character personality and select appropriate skills.`;
+    const prompt = `Generate a personality bio and select exactly 3 skills for a D&D character named "${name}". The personality should be intriguing with a unique quirk. The skills should logically match the personality.`;
+    return callApi<{ personality: string; skills: Skill[] }>(prompt, systemInstruction, personalityAndSkillsResponseSchema);
 };
