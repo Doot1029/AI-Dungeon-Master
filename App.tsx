@@ -82,18 +82,6 @@ const App: React.FC = () => {
         return () => { window.speechSynthesis.cancel(); }
     }, []);
     
-    // NPC Turn Handler
-    useEffect(() => {
-        const currentCharacter = characters[activeCharacterIndex];
-        if (gameState === GameState.IN_PROGRESS && currentCharacter?.isNpc && !isLoading) {
-            const actionText = `It is now ${currentCharacter.name}'s turn. Based on their personality (${currentCharacter.personality || 'not defined'}) and the current situation, they decide to act.`;
-            const timer = setTimeout(() => {
-                handleAction({ text: actionText, actionType: 'auto' });
-            }, 1500); // Small delay to make it feel like the NPC is "thinking"
-            return () => clearTimeout(timer);
-        }
-    }, [activeCharacterIndex, gameState, isLoading, characters]);
-
     const saveGame = useCallback(() => {
         const saveData: SaveData = {
             gameState, characters, activeCharacterIndex, storyHistory,
@@ -209,10 +197,20 @@ const App: React.FC = () => {
     };
     
     const advanceTurn = useCallback(() => {
-        if (characters.length > 0) {
-           setActiveCharacterIndex(prevIndex => (prevIndex + 1) % characters.length);
+        if (characters.length === 0) return;
+
+        const playerCharacterExists = characters.some(c => !c.isNpc);
+        if (!playerCharacterExists) {
+            console.log("No player characters left to advance turn to.");
+            return;
         }
-    }, [characters.length]);
+
+        let nextIndex = (activeCharacterIndex + 1) % characters.length;
+        while (characters[nextIndex].isNpc) {
+            nextIndex = (nextIndex + 1) % characters.length;
+        }
+        setActiveCharacterIndex(nextIndex);
+    }, [characters, activeCharacterIndex]);
     
     const handleBeginSaga = () => {
         deleteSave();
@@ -231,7 +229,10 @@ const App: React.FC = () => {
         setWorldState({});
         setQuests([]);
         setPartyReputation(0);
-        setActiveCharacterIndex(0);
+        
+        const firstPlayerIndex = characters.findIndex(c => !c.isNpc);
+        setActiveCharacterIndex(firstPlayerIndex > -1 ? firstPlayerIndex : 0);
+
 
         try {
             const initialLocation = await generateLocation(`The adventure begins based on this prompt: ${prompt}`, isPgMode);
@@ -550,6 +551,7 @@ Based on this, continue the story. Remember to provide choices for the next play
 
     const latestNarration = storyHistory.slice().reverse().find(part => part.type === 'narrative');
     const characterToEditData = editingCharacterIndex !== null ? { character: characters[editingCharacterIndex], index: editingCharacterIndex } : null;
+    const hasPlayerCharacter = characters.some(c => !c.isNpc);
 
     const TabButton: React.FC<{tabName: Tab, label: string}> = ({tabName, label}) => (
         <button
@@ -635,7 +637,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                     <div className="flex justify-center items-center gap-4 flex-wrap">
                                         <button onClick={() => handleGeneratePrompt(false)} disabled={isLoading} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? '...' : 'Generate Idea'}</button>
                                         <button onClick={() => handleGeneratePrompt(true)} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? '...' : 'Simple Idea'}</button>
-                                        <button onClick={handleStartAdventure} disabled={isLoading || characters.length === 0} className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-6 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed">{isLoading ? 'Conjuring...' : 'Start Adventure'}</button>
+                                        <button onClick={handleStartAdventure} disabled={isLoading || !hasPlayerCharacter} className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-6 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed" title={!hasPlayerCharacter ? "You must have at least one player character (non-NPC) in your party." : ""}>{isLoading ? 'Conjuring...' : 'Start Adventure'}</button>
                                     </div>
                                 </div>)}
                                 {error && <div className="text-center p-4 text-red-400 mt-4">{error}</div>}
@@ -658,10 +660,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                                             
                                             {!isLoading && !activeCharacter.isNpc && currentChoices.length > 0 && (
                                                  <ChoicesPanel choices={currentChoices} onAction={handleAction} character={activeCharacter} isLoading={isLoading} latestNarration={latestNarration} />
-                                            )}
-
-                                            {!isLoading && activeCharacter.isNpc && (
-                                                <div className="text-center p-4 italic text-cyan-300">{activeCharacter.name} is thinking...</div>
                                             )}
 
                                             {!isLoading && currentChoices.length === 0 && storyHistory.length > 0 && (
