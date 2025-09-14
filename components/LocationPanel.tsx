@@ -30,6 +30,9 @@ const CheckIcon = () => (
     </svg>
 );
 
+const objectActions = ['Examine', 'Take', 'Use on...', 'Push'];
+const npcActions = ['Talk to', 'Ask about...', 'Give...', 'Attack'];
+
 const TravelButton: React.FC<{ direction: CardinalDirection, onTravel: (dir: CardinalDirection) => void, disabled: boolean, available: boolean }> = 
 ({ direction, onTravel, disabled, available }) => {
     const gridPosition = {
@@ -65,8 +68,6 @@ const Interactable: React.FC<InteractableProps> = ({ data, type, onInteract, isL
     const [inputValue, setInputValue] = useState('');
     const [activeAction, setActiveAction] = useState<string | null>(null);
 
-    const objectActions = ['Examine', 'Take', 'Use on...', 'Push'];
-    const npcActions = ['Talk to', 'Ask about...', 'Give...', 'Attack'];
     const actions = type === 'object' ? objectActions : npcActions;
 
     const handleActionClick = (action: string) => {
@@ -152,17 +153,24 @@ export const LocationPanel: React.FC<LocationPanelProps> = ({ location, onTravel
     }
     
     const handleCopyForTexting = () => {
+        if (!location) return;
         const parts = [];
         parts.push(`*Location: ${location.name}*`);
         parts.push(location.description);
 
         if (location.objects.length > 0) {
             parts.push('\n*Objects:*');
-            location.objects.forEach(obj => parts.push(`- ${obj.name}: ${obj.description}`));
+            location.objects.forEach(obj => {
+                parts.push(`- ${obj.name}: ${obj.description}`);
+                parts.push(`  Actions: ${objectActions.join(', ')}`);
+            });
         }
         if (location.npcs.length > 0) {
             parts.push('\n*People:*');
-            location.npcs.forEach(npc => parts.push(`- ${npc.name} (${getOpinionDescription(npc.opinion)}): ${npc.description}`));
+            location.npcs.forEach(npc => {
+                parts.push(`- ${npc.name} (${getOpinionDescription(npc.opinion)}): ${npc.description}`);
+                parts.push(`  Actions: ${npcActions.join(', ')}`);
+            });
         }
         if (location.exits.length > 0) {
             parts.push(`\n*Exits:* ${location.exits.map(e => e.charAt(0).toUpperCase() + e.slice(1)).join(', ')}`);

@@ -651,7 +651,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                 {error && <div className="text-center p-4 text-red-400 -mb-4 -mt-4 rounded-t-lg bg-red-900/50">{error}</div>}
                                 
                                 {activeTab === 'story' && (
-                                    <div className="flex flex-col h-[80vh] max-h-[80vh] flex-grow">
+                                    <div className="flex flex-col flex-grow">
                                         <StoryPanel storyHistory={storyHistory} storyEndRef={storyEndRef} onSpeak={handleSpeakText} onCopy={handleCopyText}/>
                                         <div className="border-t border-gray-700 pt-4 mt-auto">
                                             {isLoading && <div className="text-center p-4 italic text-yellow-300">The DM is pondering...</div>}
