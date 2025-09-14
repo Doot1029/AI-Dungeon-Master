@@ -532,7 +532,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                         <button onClick={() => handleGeneratePrompt(true)} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-6 rounded-lg disabled:bg-gray-600">{isLoading ? '...' : 'Simple Idea'}</button>
                                         <button onClick={handleStartAdventure} disabled={isLoading || characters.length === 0} className="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-bold py-2 px-6 rounded-lg disabled:bg-gray-600 disabled:cursor-not-allowed">{isLoading ? 'Conjuring...' : 'Start Adventure'}</button>
                                     </div>
-                                </>)}
+                                </div>)}
                                 {error && <div className="text-center p-4 text-red-400 mt-4">{error}</div>}
                             </div>
                         ) : (
