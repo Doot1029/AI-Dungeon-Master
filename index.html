@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -15,6 +14,19 @@
       }
       .font-medieval {
         font-family: 'MedievalSharp', cursive;
+      }
+      @keyframes slide-in {
+        from {
+          transform: translateX(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .notification-toast {
+        animation: slide-in 0.5s forwards;
       }
     </style>
   <script type="importmap">

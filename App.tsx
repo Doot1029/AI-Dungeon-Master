@@ -49,6 +49,27 @@ const getReputationDescription = (rep: number): string => {
     return 'Villainous';
 }
 
+const NotificationToast: React.FC<{ notification: { message: string, type: 'success' | 'error' } }> = ({ notification }) => {
+    const bgColor = notification.type === 'success' ? 'bg-green-600' : 'bg-red-600';
+    return <div className={`fixed top-5 right-5 p-4 rounded-lg shadow-lg text-white ${bgColor} notification-toast z-50`}>{notification.message}</div>;
+};
+
+const ConfirmationDialog: React.FC<{ confirmation: { message: string, onConfirm: () => void }, onCancel: () => void }> = ({ confirmation, onCancel }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 border border-gray-600 rounded-lg p-6 shadow-2xl w-full max-w-sm">
+                <h3 className="font-medieval text-xl text-yellow-400 mb-4">Confirm Action</h3>
+                <p className="text-gray-300 mb-6">{confirmation.message}</p>
+                <div className="flex justify-end gap-4">
+                    <button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 font-bold py-2 px-4 rounded transition-colors">Cancel</button>
+                    <button onClick={() => { confirmation.onConfirm(); onCancel(); }} className="bg-red-600 hover:bg-red-500 font-bold py-2 px-4 rounded transition-colors">Confirm</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const App: React.FC = () => {
     const [apiKeyIsMissing, setApiKeyIsMissing] = useState(false);
 
@@ -72,6 +93,10 @@ const App: React.FC = () => {
     const [editingCharacterIndex, setEditingCharacterIndex] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<Tab>('story');
     
+    // UI State
+    const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+    const [confirmation, setConfirmation] = useState<{ message: string, onConfirm: () => void } | null>(null);
+
     // World State
     const [worldState, setWorldState] = useState<WorldState>({});
     const [quests, setQuests] = useState<Quest[]>([]);
@@ -82,6 +107,13 @@ const App: React.FC = () => {
     const activeCharacter = characters[activeCharacterIndex];
     const currentLocationId = activeCharacter?.locationId;
     const currentLocation = currentLocationId ? worldState[currentLocationId] : null;
+    
+    useEffect(() => {
+        if (notification) {
+            const timer = setTimeout(() => setNotification(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [notification]);
 
     useEffect(() => {
         storyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -102,6 +134,11 @@ const App: React.FC = () => {
         gameState, characters, activeCharacterIndex, storyHistory,
         currentChoices, prompt, isPgMode, worldState, quests, partyReputation
     ]);
+
+    const handleManualSave = useCallback(() => {
+        saveGame();
+        setNotification({ message: 'Game progress saved!', type: 'success' });
+    }, [saveGame]);
 
     const loadGame = () => {
         const savedDataString = localStorage.getItem(SAVE_GAME_KEY);
@@ -125,7 +162,6 @@ const App: React.FC = () => {
         setHasSaveGame(false);
     };
     
-    // Check for save game on initial load
     useEffect(() => {
         const savedData = localStorage.getItem(SAVE_GAME_KEY);
         if (savedData) {
@@ -133,7 +169,6 @@ const App: React.FC = () => {
         }
     }, []);
 
-    // Auto-save
     useEffect(() => {
         if (gameState === GameState.IN_PROGRESS) {
             saveGame();
@@ -168,17 +203,22 @@ const App: React.FC = () => {
 
     const handleDeleteCharacter = (indexToDelete: number) => {
         if (characters.length <= 1) {
-            alert("You can't delete the last character!");
+            setNotification({ message: "You can't delete the last character!", type: 'error' });
             return;
         }
-        if (window.confirm(`Delete ${characters[indexToDelete].name}?`)) {
-            const newCharacters = characters.filter((_, index) => index !== indexToDelete);
-            if (activeCharacterIndex >= indexToDelete) {
-                setActiveCharacterIndex(Math.max(0, activeCharacterIndex - 1));
+        setConfirmation({
+            message: `Delete ${characters[indexToDelete].name}? This cannot be undone.`,
+            onConfirm: () => {
+                const charName = characters[indexToDelete].name;
+                const newCharacters = characters.filter((_, index) => index !== indexToDelete);
+                if (activeCharacterIndex >= indexToDelete) {
+                    setActiveCharacterIndex(Math.max(0, activeCharacterIndex - 1));
+                }
+                setCharacters(newCharacters);
+                if (editingCharacterIndex === indexToDelete) setEditingCharacterIndex(null);
+                setNotification({ message: `${charName} was removed from the party.`, type: 'success' });
             }
-            setCharacters(newCharacters);
-            if (editingCharacterIndex === indexToDelete) setEditingCharacterIndex(null);
-        }
+        });
     };
 
     const handleGeneratePrompt = async (isSimple: boolean) => {
@@ -251,14 +291,12 @@ const App: React.FC = () => {
             const newWorldState: WorldState = { [startId]: initialLocation };
             setWorldState(newWorldState);
             
-            // Set all characters to the starting location
             setCharacters(prev => prev.map(char => ({...char, locationId: startId })));
 
             const welcomeText = `Your party, consisting of ${getPartyComposition(false)}, finds themselves at the ${initialLocation.name}.`;
             const firstNarrative : StoryPart = { id: crypto.randomUUID(), type: 'narrative', text: `${welcomeText}\n\n${initialLocation.description}`, characterName: 'DM' };
             setStoryHistory([firstNarrative]);
 
-            // Get initial choices
             await handleAction({text: "The adventurers look around, taking in the scene.", actionType: 'auto'}, [firstNarrative], true);
 
         } catch (e: any) {
@@ -326,11 +364,9 @@ Based on this, continue the story. Remember to provide choices for the next play
 
             const outcome = await generateActionOutcome(promptForAI, isPgMode);
             
-            // Process outcome
             setStoryHistory(prev => [...prev, { id: crypto.randomUUID(), type: 'narrative', text: outcome.narrative, characterName: 'DM' }]);
             setCurrentChoices(outcome.choices);
 
-            // Update Character
             if (outcome.characterUpdates) {
                 const updates = outcome.characterUpdates;
                 setCharacters(prevChars => prevChars.map((char, index) => {
@@ -364,7 +400,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                 }));
             }
             
-            // Update Reputation & Opinions
             if(outcome.partyReputationChange) {
                 setPartyReputation(prev => prev + outcome.partyReputationChange!);
             }
@@ -384,7 +419,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                 });
             }
 
-            // Update Quests
             if (outcome.questUpdates) {
                 setQuests(prevQuests => {
                     const newQuests = [...prevQuests];
@@ -405,7 +439,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                 });
             }
             
-            // Update World
             if (outcome.locationUpdates && currentLocationId) {
                 const updates = outcome.locationUpdates;
                 setWorldState(prevWorld => {
@@ -467,19 +500,17 @@ Based on this, continue the story. Remember to provide choices for the next play
                 setStoryHistory(prev => [...prev, narrative]);
             }
             
-            // Update character's location
             setCharacters(prev => prev.map((char, index) => index === activeCharacterIndex ? {...char, locationId: newLocationId} : char));
 
-            // Generate choices for the new location *after* the character has moved.
             await handleAction({text: "Look around the new area.", actionType: 'auto'}, storyHistory, true);
 
         } catch(e: any) {
              console.error(e);
              setError(e.message || "The path ahead is unclear. The AI stumbled. Try again.");
-             setStoryHistory(prev => prev.slice(0, -1)); // remove travel message
+             setStoryHistory(prev => prev.slice(0, -1));
         } finally {
             setIsLoading(false);
-            advanceTurn(); // Traveling costs a turn
+            advanceTurn();
         }
     }
     
@@ -494,27 +525,15 @@ Based on this, continue the story. Remember to provide choices for the next play
         URL.revokeObjectURL(url);
     };
 
-    const handleExportGame = () => {
+    const getSaveDataString = (): string => {
         const saveData: SaveData = {
             gameState, characters, activeCharacterIndex, storyHistory,
             currentChoices, prompt, isPgMode, worldState, quests, partyReputation,
         };
-        const jsonString = JSON.stringify(saveData, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ai-dungeon-save-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        return JSON.stringify(saveData, null, 2);
     };
 
     const handleImportGame = (jsonString: string) => {
-        if (!window.confirm("Are you sure you want to import a save file? This will overwrite your current progress.")) {
-            return;
-        }
         try {
             const saveData: SaveData = JSON.parse(jsonString);
             if (!saveData.gameState || !saveData.characters || saveData.activeCharacterIndex === undefined) {
@@ -534,10 +553,10 @@ Based on this, continue the story. Remember to provide choices for the next play
             localStorage.setItem(SAVE_GAME_KEY, JSON.stringify(saveData));
             setHasSaveGame(true);
             setShowSettings(false);
-            alert("Game imported successfully!");
+            setNotification({ message: "Game imported successfully!", type: 'success' });
         } catch (e: any) {
             console.error("Failed to import game:", e);
-            alert(`Failed to import save file: ${e.message}`);
+            setNotification({ message: `Failed to import save file: ${e.message}`, type: 'error' });
         }
     };
     
@@ -577,22 +596,28 @@ Based on this, continue the story. Remember to provide choices for the next play
         }
     };
 
-
     const restartGame = () => {
-        if (window.confirm("Are you sure you want to start a new game? This will delete your saved progress.")) {
-            setGameState(GameState.CHARACTER_SELECTION);
-            setStoryHistory([]);
-            setCurrentChoices([]);
-            setPrompt('');
-            setError(null);
-            setWorldState({});
-            setQuests([]);
-            setCharacters(initialCharacters);
-            setActiveCharacterIndex(0);
-            deleteSave();
-            window.speechSynthesis.cancel();
-        }
+        setConfirmation({
+            message: "Are you sure you want to start a new game? This will delete your saved progress.",
+            onConfirm: () => {
+                setGameState(GameState.CHARACTER_SELECTION);
+                setStoryHistory([]);
+                setCurrentChoices([]);
+                setPrompt('');
+                setError(null);
+                setWorldState({});
+                setQuests([]);
+                setCharacters(initialCharacters);
+                setActiveCharacterIndex(0);
+                deleteSave();
+                window.speechSynthesis.cancel();
+            }
+        });
     }
+    
+    const showConfirmation = (message: string, onConfirm: () => void) => {
+        setConfirmation({ message, onConfirm });
+    };
 
     if (apiKeyIsMissing) {
         return (
@@ -628,7 +653,9 @@ Based on this, continue the story. Remember to provide choices for the next play
 
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
-            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} onSaveGame={saveGame} onExportGame={handleExportGame} onImportGame={handleImportGame} />}
+            {notification && <NotificationToast notification={notification} />}
+            {confirmation && <ConfirmationDialog confirmation={confirmation} onCancel={() => setConfirmation(null)} />}
+            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} onSaveGame={handleManualSave} onExportGame={getSaveDataString} onImportGame={handleImportGame} showConfirmation={showConfirmation}/>}
             <div className="min-h-screen bg-gray-900 bg-opacity-80 backdrop-blur-sm flex flex-col items-center p-4 sm:p-6 md:p-8 relative">
                 <div className="absolute top-4 right-4 z-10">
                     <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-yellow-300 transition-colors p-2 rounded-full bg-gray-800 bg-opacity-50 hover:bg-opacity-80" aria-label="Open settings"><GearIcon /></button>
@@ -638,7 +665,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                 </header>
 
                 <main className="w-full max-w-7xl flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Left Panel: Party & Character */}
                     <aside className="lg:col-span-1 flex flex-col gap-6">
                         <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg">
                            <div className="flex justify-between items-center mb-4">
@@ -674,7 +700,6 @@ Based on this, continue the story. Remember to provide choices for the next play
                         {gameState === GameState.CHARACTER_SELECTION && <CharacterCreator onSave={handleSaveCharacter} characterToEdit={characterToEditData} onCancelEdit={() => setEditingCharacterIndex(null)} isPgMode={isPgMode}/>}
                     </aside>
 
-                    {/* Right Panels: Story, Location, etc. */}
                     <div className="lg:col-span-2 flex flex-col">
                          {gameState !== GameState.IN_PROGRESS ? (
                             <div className="bg-gray-800 bg-opacity-70 p-4 rounded-lg border border-gray-600 shadow-lg flex flex-col flex-grow items-center justify-center">
@@ -709,7 +734,7 @@ Based on this, continue the story. Remember to provide choices for the next play
                                 <TabButton tabName="location" label="Location" />
                                 <TabButton tabName="quests" label="Quests" />
                             </div>
-                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-b-lg border border-t-0 border-gray-600 shadow-lg flex-grow flex flex-col">
+                            <div className="bg-gray-800 bg-opacity-70 p-4 rounded-b-lg border border-t-0 border-gray-600 shadow-lg flex-grow flex flex-col min-h-[80vh]">
                                 {error && <div className="text-center p-4 text-red-400 -mb-4 -mt-4 rounded-t-lg bg-red-900/50">{error}</div>}
                                 
                                 {activeTab === 'story' && (

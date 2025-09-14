@@ -11,11 +11,10 @@ interface CharacterCreatorProps {
 
 const MAX_SKILLS = 3;
 
-// Helper to roll 4d6 and drop the lowest
 const rollStat = (): number => {
     const rolls = Array.from({ length: 4 }, () => Math.floor(Math.random() * 6) + 1);
     rolls.sort((a, b) => a - b);
-    rolls.shift(); // remove the lowest
+    rolls.shift();
     return rolls.reduce((sum, roll) => sum + roll, 0);
 };
 
@@ -35,6 +34,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
     const [isNpc, setIsNpc] = useState(false);
     const [isGeneratingBio, setIsGeneratingBio] = useState(false);
     const [selectedSkills, setSelectedSkills] = useState<Skill[]>([]);
+    const [error, setError] = useState<string | null>(null);
     
     useEffect(() => {
         if (characterToEdit) {
@@ -44,13 +44,13 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
             setIsNpc(characterToEdit.character.isNpc);
             setSelectedSkills(characterToEdit.character.proficiencies);
         } else {
-            // Reset form for a new character
             setName('');
             setScores(generateInitialScores());
             setPersonality('');
             setIsNpc(false);
             setSelectedSkills([]);
         }
+        setError(null);
     }, [characterToEdit]);
 
     const handleRollStats = () => {
@@ -59,17 +59,18 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
 
     const handleGenerateBio = async () => {
         if (!name.trim()) {
-            alert("Please enter a name before generating a bio.");
+            setError("Please enter a name before generating a bio.");
             return;
         }
+        setError(null);
         setIsGeneratingBio(true);
         try {
             const { personality: newBio, skills: newSkills } = await generatePersonalityAndSkills(name, isPgMode);
             setPersonality(newBio);
             setSelectedSkills(newSkills || []);
-        } catch (error) {
-            console.error(error);
-            alert("Failed to generate a personality and skills. Please try again.");
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "Failed to generate a personality. Please try again.");
         } finally {
             setIsGeneratingBio(false);
         }
@@ -90,19 +91,15 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) {
-            alert("Please enter a name for your character.");
+            setError("Please enter a name for your character.");
             return;
         }
+        setError(null);
 
-        const baseHp = 8;
-        const baseMp = 4;
         const getModifier = (score: number) => Math.floor((score - 10) / 2);
-        const conModifier = getModifier(scores[Ability.CON]);
-        const intModifier = getModifier(scores[Ability.INT]);
-
-        const maxHp = baseHp + conModifier;
-        const maxMp = baseMp + intModifier;
-        const coins = Math.floor(Math.random() * 20) + 10; // 4d4+10 approx
+        const maxHp = 8 + getModifier(scores[Ability.CON]);
+        const maxMp = 4 + getModifier(scores[Ability.INT]);
+        const coins = Math.floor(Math.random() * 20) + 10;
 
         const characterData: Character = {
             name,
@@ -144,7 +141,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
                         type="text"
                         id="name"
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {setName(e.target.value); setError(null);}}
                         className="w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 focus:ring-2 focus:ring-yellow-500 focus:outline-none"
                         required
                     />
@@ -178,7 +175,7 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
                     <textarea
                         id="personality"
                         value={personality}
-                        onChange={(e) => setPersonality(e.target.value)}
+                        onChange={(e) => {setPersonality(e.target.value); setError(null);}}
                         placeholder="e.g., A gruff but kind warrior who secretly loves kittens."
                         className="w-full h-20 p-2 bg-gray-900 border border-gray-600 rounded focus:ring-2 focus:ring-yellow-500 focus:outline-none"
                     />
@@ -208,6 +205,8 @@ export const CharacterCreator: React.FC<CharacterCreatorProps> = ({ onSave, onCa
                         Is this character an NPC? (AI-controlled)
                     </label>
                 </div>
+                
+                {error && <div className="p-2 my-1 bg-red-800/50 text-red-300 text-sm rounded text-center">{error}</div>}
 
                  <div className="flex gap-2">
                     {characterToEdit && (
