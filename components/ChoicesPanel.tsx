@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Choice, Character, StoryPart, ActionType } from '../types';
 import { DIFFICULTY_MAP } from '../constants';
@@ -27,6 +28,7 @@ const CheckIcon = () => (
 
 export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, character, isLoading, latestNarration }) => {
     const [isCopied, setIsCopied] = useState(false);
+    const [customAction, setCustomAction] = useState('');
 
     const handleCopyForTexting = () => {
         if (!latestNarration) return;
@@ -40,6 +42,12 @@ export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, c
         });
     };
     
+    const handleCustomSubmit = (actionType: 'do' | 'say') => {
+        if (!customAction.trim() || isLoading) return;
+        onAction({ text: customAction, actionType });
+        setCustomAction('');
+    };
+
     if (character && character.isNpc) {
         return (
             <div className="text-center p-4">
@@ -68,7 +76,43 @@ export const ChoicesPanel: React.FC<ChoicesPanelProps> = ({ choices, onAction, c
                 ))}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="border-t border-gray-700 pt-4 mt-4">
+                <p className="text-center text-sm text-gray-400 mb-2">Or, describe your own action:</p>
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={customAction}
+                        onChange={(e) => setCustomAction(e.target.value)}
+                        placeholder="What do you do or say?"
+                        className="flex-grow bg-gray-900 border border-gray-600 rounded px-3 py-2 focus:ring-2 focus:ring-yellow-500 focus:outline-none"
+                        disabled={isLoading}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleCustomSubmit('do');
+                            }
+                        }}
+                    />
+                    <button
+                        onClick={() => handleCustomSubmit('do')}
+                        disabled={isLoading || !customAction.trim()}
+                        className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-3 rounded-lg transition-colors disabled:opacity-50"
+                        title="Perform an action"
+                    >
+                        Do
+                    </button>
+                    <button
+                        onClick={() => handleCustomSubmit('say')}
+                        disabled={isLoading || !customAction.trim()}
+                        className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-3 rounded-lg transition-colors disabled:opacity-50"
+                        title="Say something"
+                    >
+                        Say
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-4">
                 <button 
                     onClick={() => onAction({ text: "Wait and observe the situation.", actionType: 'do' })}
                     disabled={isLoading}

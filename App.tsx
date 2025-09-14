@@ -484,6 +484,54 @@ Based on this, continue the story. Remember to provide choices for the next play
         URL.revokeObjectURL(url);
     };
 
+    const handleExportGame = () => {
+        const saveData: SaveData = {
+            gameState, characters, activeCharacterIndex, storyHistory,
+            currentChoices, prompt, isPgMode, worldState, quests, partyReputation,
+        };
+        const jsonString = JSON.stringify(saveData, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ai-dungeon-save-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImportGame = (jsonString: string) => {
+        if (!window.confirm("Are you sure you want to import a save file? This will overwrite your current progress.")) {
+            return;
+        }
+        try {
+            const saveData: SaveData = JSON.parse(jsonString);
+            if (!saveData.gameState || !saveData.characters || saveData.activeCharacterIndex === undefined) {
+                throw new Error("Invalid save file format.");
+            }
+            setGameState(saveData.gameState);
+            setCharacters(saveData.characters);
+            setActiveCharacterIndex(saveData.activeCharacterIndex);
+            setStoryHistory(saveData.storyHistory);
+            setCurrentChoices(saveData.currentChoices);
+            setPrompt(saveData.prompt);
+            setIsPgMode(saveData.isPgMode);
+            setWorldState(saveData.worldState);
+            setQuests(saveData.quests);
+            setPartyReputation(saveData.partyReputation);
+            
+            localStorage.setItem(SAVE_GAME_KEY, JSON.stringify(saveData));
+            setHasSaveGame(true);
+            setShowSettings(false);
+            alert("Game imported successfully!");
+        } catch (e: any) {
+            console.error("Failed to import game:", e);
+            alert(`Failed to import save file: ${e.message}`);
+        }
+    };
+
+
     const restartGame = () => {
         if (window.confirm("Are you sure you want to start a new game? This will delete your saved progress.")) {
             setGameState(GameState.CHARACTER_SELECTION);
@@ -518,7 +566,7 @@ Based on this, continue the story. Remember to provide choices for the next play
 
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
-            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} onSaveGame={saveGame} />}
+            {showSettings && <SettingsMenu isPgMode={isPgMode} onPgModeChange={setIsPgMode} onClose={() => setShowSettings(false)} onExportStory={handleExportStory} onSaveGame={saveGame} onExportGame={handleExportGame} onImportGame={handleImportGame} />}
             <div className="min-h-screen bg-gray-900 bg-opacity-80 backdrop-blur-sm flex flex-col items-center p-4 sm:p-6 md:p-8 relative">
                 <div className="absolute top-4 right-4 z-10">
                     <button onClick={() => setShowSettings(true)} className="text-gray-400 hover:text-yellow-300 transition-colors p-2 rounded-full bg-gray-800 bg-opacity-50 hover:bg-opacity-80" aria-label="Open settings"><GearIcon /></button>

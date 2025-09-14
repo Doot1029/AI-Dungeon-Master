@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 
 interface SettingsMenuProps {
     isPgMode: boolean;
@@ -7,16 +7,40 @@ interface SettingsMenuProps {
     onClose: () => void;
     onExportStory: () => void;
     onSaveGame: () => void;
+    onExportGame: () => void;
+    onImportGame: (jsonString: string) => void;
 }
 
-export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeChange, onClose, onExportStory, onSaveGame }) => {
+export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeChange, onClose, onExportStory, onSaveGame, onExportGame, onImportGame }) => {
     const [isSaved, setIsSaved] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleSave = () => {
         onSaveGame();
         setIsSaved(true);
         setTimeout(() => setIsSaved(false), 2000);
     }
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target?.result;
+                if (typeof text === 'string') {
+                    onImportGame(text);
+                }
+            };
+            reader.readAsText(file);
+        }
+        if (event.target) {
+            event.target.value = '';
+        }
+    };
 
     return (
         <div 
@@ -38,7 +62,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeCh
                      <div className="p-3 bg-gray-700 rounded-lg">
                         <h4 className="font-bold text-gray-200 mb-2">Save Game</h4>
                         <p className="text-xs text-gray-400 mb-3">
-                            Save your current progress. The game also auto-saves.
+                            Save your current progress to this browser. The game also auto-saves.
                         </p>
                         <button 
                             onClick={handleSave}
@@ -47,6 +71,35 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeCh
                             {isSaved ? 'Saved!' : 'Save Progress'}
                         </button>
                     </div>
+
+                    <div className="p-3 bg-gray-700 rounded-lg">
+                        <h4 className="font-bold text-gray-200 mb-2">Import / Export Game</h4>
+                        <p className="text-xs text-gray-400 mb-3">
+                            Save your entire game to a file, or load a previous adventure.
+                        </p>
+                        <div className="flex gap-2">
+                             <button
+                                onClick={onExportGame}
+                                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Export
+                            </button>
+                            <button
+                                onClick={handleImportClick}
+                                className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded"
+                            >
+                                Import
+                            </button>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                className="hidden"
+                                accept=".json,application/json"
+                                onChange={handleFileChange}
+                            />
+                        </div>
+                    </div>
+
 
                     <div className="flex items-center justify-between p-3 bg-gray-700 rounded-lg">
                         <div>
@@ -68,11 +121,11 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ isPgMode, onPgModeCh
                     <div className="p-3 bg-gray-700 rounded-lg">
                         <h4 className="font-bold text-gray-200 mb-2">Export Story</h4>
                         <p className="text-xs text-gray-400 mb-3">
-                            Save your adventure as a text file. Direct MP3 export is not available.
+                            Save your adventure's narrative as a text file.
                         </p>
                         <button 
                             onClick={onExportStory}
-                            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
+                            className="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded transition-colors duration-200"
                         >
                             Export as .txt
                         </button>
