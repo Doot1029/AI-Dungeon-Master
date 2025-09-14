@@ -1,15 +1,24 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { LocationData, ActionOutcome, Skill, ActionType, CardinalDirection, ClassName } from "../types";
 
+// --- IMPORTANT ---
+// PASTE YOUR GEMINI API KEY HERE.
+// This key will be visible in your code if you deploy this to a public repository.
+// It is strongly recommended to use this method for local development or private sites only.
+const API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+
 let ai: GoogleGenAI | null = null;
 
-export const initializeAi = (apiKey: string) => {
-    if (!apiKey) {
-        console.error("API key is missing.");
-        throw new Error("API key is missing.");
+const getAiClient = (): GoogleGenAI => {
+    if (ai) return ai;
+    if (!API_KEY || API_KEY === "YOUR_GEMINI_API_KEY_HERE") {
+        throw new Error("API key is missing. Please paste your Gemini API key into services/geminiService.ts");
     }
-    ai = new GoogleGenAI({ apiKey });
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+    return ai;
 };
+
 
 const allSkills = Object.values(Skill);
 const allActionTypes: ActionType[] = ['do', 'say'];
@@ -158,11 +167,9 @@ const getBaseSystemInstruction = (isPgMode: boolean) => {
 };
 
 const callApi = async <T>(prompt: string, systemInstruction: string, schema: object): Promise<T> => {
-     if (!ai) {
-        throw new Error("AI service is not initialized. Please set the API key.");
-    }
+     const client = getAiClient();
      try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
             config: {
@@ -178,7 +185,7 @@ const callApi = async <T>(prompt: string, systemInstruction: string, schema: obj
 
     } catch (error) {
         console.error("Error communicating with Gemini:", error);
-        throw new Error("Failed to communicate with the AI Dungeon Master.");
+        throw new Error("Failed to communicate with the AI Dungeon Master. Have you set your API key in services/geminiService.ts?");
     }
 }
 
@@ -194,14 +201,14 @@ export const generateActionOutcome = async (prompt: string, isPgMode: boolean): 
 
 
 export const generatePromptIdea = async (isPgMode: boolean): Promise<string> => {
-    if (!ai) throw new Error("AI service not initialized.");
+    const client = getAiClient();
     try {
         let content = `Generate a creative and intriguing D&D story prompt for a party of adventurers. The prompt should be about 2-3 sentences long and set a clear scene and potential objective. Do not surround the response with quotes or any other formatting, just return the plain text of the prompt. Example: Three adventurers walk into a tavern in the misty port city of Neverwinter. A cloaked figure in the corner beckons them over...`;
         if (isPgMode) {
             content += ` The prompt must be strictly PG-rated and family-friendly.`
         }
 
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: content,
             config: {
@@ -217,14 +224,14 @@ export const generatePromptIdea = async (isPgMode: boolean): Promise<string> => 
 };
 
 export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<string> => {
-    if (!ai) throw new Error("AI service not initialized.");
+    const client = getAiClient();
     try {
         let content = `Generate a simple, one or two-sentence D&D story prompt suitable for a quick game or for a younger audience. The prompt should present a clear, immediate situation. Do not surround the response with quotes or any other formatting, just return the plain text of the prompt. Example: You find a mysterious, glowing key in an ancient forest.`;
         if (isPgMode) {
             content += ` The prompt must be strictly PG-rated and family-friendly.`
         }
 
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: content,
             config: {
@@ -240,20 +247,23 @@ export const generateSimplePromptIdea = async (isPgMode: boolean): Promise<strin
 };
 
 export const generatePersonality = async (name: string, className: ClassName, isPgMode: boolean): Promise<string> => {
-    if (!ai) throw new Error("AI service not initialized.");
+    const client = getAiClient();
     try {
-        const userPrompt = `Generate a short, 1-2 sentence personality bio for a D&D character named ${name} who is a ${className}. Make it intriguing and give them a unique quirk. Do not surround the response with quotes or any other formatting, just return the plain text of the bio.`;
-        
-        let systemInstruction = `You are a creative writer specializing in fantasy characters. Your responses should be concise, creative, and delivered as plain text.`;
+        // Combine system instruction and user prompt into a single prompt to avoid header encoding issues.
+        let fullPrompt = `As a creative writer specializing in fantasy characters, generate a short, 1-2 sentence personality bio for a D&D character.
+Character Name: ${name}
+Character Class: ${className}
+Bio constraints: Make it intriguing and give them a unique quirk. The response should be concise, delivered as plain text only, with no quotes or other formatting.`;
+
         if (isPgMode) {
-            systemInstruction += ` All content must be strictly PG-rated and family-friendly.`;
+            fullPrompt += `\nIMPORTANT: The bio must be strictly PG-rated and family-friendly.`;
         }
 
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: userPrompt,
+            contents: fullPrompt,
             config: {
-                systemInstruction: systemInstruction,
+                // systemInstruction is removed and merged into contents.
                 temperature: 0.8,
             },
         });

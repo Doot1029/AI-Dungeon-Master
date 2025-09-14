@@ -1,3 +1,4 @@
+
 export enum Ability {
     STR = 'Strength',
     DEX = 'Dexterity',
@@ -86,7 +87,6 @@ export enum GameState {
     CHARACTER_SELECTION = 'CHARACTER_SELECTION',
     AWAITING_PROMPT = 'AWAITING_PROMPT',
     IN_PROGRESS = 'IN_PROGRESS',
-    API_KEY_NEEDED = 'API_KEY_NEEDED',
 }
 
 // World State Types

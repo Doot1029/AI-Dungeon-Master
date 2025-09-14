@@ -1,6 +1,7 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Character, StoryPart, Choice, GameState, LocationData, WorldState, CardinalDirection, ActionType, Quest } from './types';
-import { initializeAi, generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
+import { generateLocation, generateActionOutcome, generatePromptIdea, generateSimplePromptIdea } from './services/geminiService';
 import { CharacterCreator } from './components/CharacterCreator';
 import { CharacterSheet } from './components/CharacterSheet';
 import { StoryPanel } from './components/StoryPanel';
@@ -8,7 +9,6 @@ import { ChoicesPanel } from './components/ChoicesPanel';
 import { LocationPanel } from './components/LocationPanel';
 import { QuestPanel } from './components/QuestPanel';
 import { SettingsMenu } from './components/SettingsMenu';
-import { ApiKeyModal } from './components/ApiKeyModal';
 import { initialCharacters } from './constants';
 import { useAudio } from './hooks/useAudio';
 
@@ -35,7 +35,7 @@ const getReputationDescription = (rep: number): string => {
 }
 
 const App: React.FC = () => {
-    const [gameState, setGameState] = useState<GameState>(GameState.API_KEY_NEEDED);
+    const [gameState, setGameState] = useState<GameState>(GameState.CHARACTER_SELECTION);
     const [characters, setCharacters] = useState<Character[]>(initialCharacters);
     const [activeCharacterIndex, setActiveCharacterIndex] = useState<number>(0);
     const [storyHistory, setStoryHistory] = useState<StoryPart[]>([]);
@@ -57,14 +57,6 @@ const App: React.FC = () => {
     const activeCharacter = characters[activeCharacterIndex];
     const currentLocationId = activeCharacter?.locationId;
     const currentLocation = currentLocationId ? worldState[currentLocationId] : null;
-
-    useEffect(() => {
-        // Check for API key on component mount
-        const storedApiKey = sessionStorage.getItem('gemini-api-key');
-        if (storedApiKey) {
-            handleApiKeySubmit(storedApiKey);
-        }
-    }, []);
 
     useEffect(() => {
         storyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -100,16 +92,6 @@ const App: React.FC = () => {
         catch (err) { console.error('Failed to copy text: ', err); }
     };
     
-    const handleApiKeySubmit = (apiKey: string) => {
-        try {
-            initializeAi(apiKey);
-            sessionStorage.setItem('gemini-api-key', apiKey);
-            setGameState(GameState.CHARACTER_SELECTION);
-        } catch (e: any) {
-            setError(e.message || "Failed to initialize AI service.");
-        }
-    };
-
     const handleSaveCharacter = (character: Character, index?: number) => {
         const newCharacters = [...characters];
         if (index !== undefined) {
@@ -143,9 +125,9 @@ const App: React.FC = () => {
         try {
             const newPrompt = isSimple ? await generateSimplePromptIdea(isPgMode) : await generatePromptIdea(isPgMode);
             setPrompt(newPrompt);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError("Failed to generate a prompt idea. Please try again.");
+            setError(e.message || "Failed to generate a prompt idea. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -199,9 +181,9 @@ const App: React.FC = () => {
             // Get initial choices
             await handleAction({text: "The adventurers look around, taking in the scene.", actionType: 'auto'}, [firstNarrative], true);
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError("Failed to start adventure. Please try again.");
+            setError(e.message || "Failed to start adventure. Please try again.");
             setGameState(GameState.AWAITING_PROMPT);
         } finally {
             setIsLoading(false);
@@ -358,9 +340,9 @@ Based on this, continue the story. Remember to provide choices for the next play
                 });
             }
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            setError("The AI is confused by that action. Try something else.");
+            setError(e.message || "The AI is confused by that action. Try something else.");
         } finally {
             setIsLoading(false);
             if (!preventTurnAdvance) {
@@ -411,9 +393,9 @@ Based on this, continue the story. Remember to provide choices for the next play
             // Generate choices for the new location *after* the character has moved.
             await handleAction({text: "Look around the new area.", actionType: 'auto'}, storyHistory, true);
 
-        } catch(e) {
+        } catch(e: any) {
              console.error(e);
-             setError("The path ahead is unclear. The AI stumbled. Try again.");
+             setError(e.message || "The path ahead is unclear. The AI stumbled. Try again.");
              setStoryHistory(prev => prev.slice(0, -1)); // remove travel message
         } finally {
             setIsLoading(false);
@@ -433,8 +415,7 @@ Based on this, continue the story. Remember to provide choices for the next play
     };
 
     const restartGame = () => {
-        const apiKey = sessionStorage.getItem('gemini-api-key');
-        setGameState(apiKey ? GameState.CHARACTER_SELECTION : GameState.API_KEY_NEEDED);
+        setGameState(GameState.CHARACTER_SELECTION);
         setStoryHistory([]);
         setCurrentChoices([]);
         setPrompt('');
@@ -459,10 +440,6 @@ Based on this, continue the story. Remember to provide choices for the next play
             {label}
         </button>
     );
-
-    if (gameState === GameState.API_KEY_NEEDED) {
-        return <ApiKeyModal onApiKeySubmit={handleApiKeySubmit} error={error} />;
-    }
 
     return (
         <div className="min-h-screen bg-cover bg-center bg-fixed" style={{backgroundImage: "url('https://picsum.photos/seed/fantasyworld/1920/1080')"}}>
